@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "veerrajFood",
+    "slug": "veerrajFood",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/image.png",
+    "scheme": "veerrajfood",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We use your current location to save shop coordinates for map navigation."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/image.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.veerrajFood"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/image.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow this app to use the camera to capture a shop photo."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "We use your current location to save shop coordinates for map navigation."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "56b4507c-f661-49f3-a5b1-1700363235a3"
+      }
+    }
+  }
+}
