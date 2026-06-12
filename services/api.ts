@@ -21,13 +21,15 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
-  roleId: 1 | 2;
+  roleId: 2;
   isActive?: boolean;
 };
 
 export type AppRoute = {
   _id: string;
+  userId: string;
   routeName: string;
+  cityName: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,21 +51,39 @@ export type AppShop = {
   updatedAt: string;
 };
 
+export type AppProduct = {
+  _id: string;
+  productName: string;
+  mrp: number;
+  productRate: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppBillItem = {
+  productId: string | AppProduct;
+  productName: string;
+  productRate: number;
+  quantity: number;
+  total: number;
+};
+
+export type AppBill = {
+  _id: string;
+  routeId: string | AppRoute;
+  shopId: string | AppShop;
+  items: AppBillItem[];
+  totalAmount: number;
+  status: "ordered" | "processing" | "delivered" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type UploadImageFile = {
   uri: string;
   name?: string;
   mimeType?: string;
   size?: number;
-};
-
-export type AdminUser = {
-  id: string;
-  name: string;
-  email: string;
-  roleId: 1 | 2;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export const setAuthToken = (token: string) => {
@@ -121,7 +141,8 @@ export const hydrateAuthSession = async () => {
       !("id" in user) ||
       !("name" in user) ||
       !("email" in user) ||
-      !("roleId" in user)
+      !("roleId" in user) ||
+      Number(user.roleId) !== 2
     ) {
       clearAuthToken();
       authHydrated = true;
@@ -133,7 +154,7 @@ export const hydrateAuthSession = async () => {
       id: String(user.id),
       name: String(user.name),
       email: String(user.email),
-      roleId: Number(user.roleId) === 1 ? 1 : 2,
+      roleId: 2,
     };
   } catch {
     clearAuthToken();
@@ -176,6 +197,15 @@ export type ApiResult<T = unknown> = {
   status: number | null;
   data: T | null;
   message: string;
+};
+
+export type LoginResponse = {
+  token?: string;
+  user?: unknown;
+  requiresVerification?: boolean;
+  verificationToken?: string;
+  adminEmail?: string;
+  message?: string;
 };
 
 
@@ -383,7 +413,7 @@ export const registerUser = async (data: {
   name: string;
   email: string;
   password: string;
-  roleId: 1 | 2;
+  roleId: 2;
 }) => {
   try {
     const response = await API.post("/api/auth/register", {
@@ -396,74 +426,132 @@ export const registerUser = async (data: {
   }
 };
 
+const extractRoleTwoUser = (payload: unknown): AuthUser | null => {
+  const userData =
+    typeof payload === "object" &&
+    payload !== null &&
+    "user" in payload
+      ? (payload as { user?: unknown }).user
+      : null;
+
+  if (!userData || typeof userData !== "object") {
+    return null;
+  }
+
+  const roleRaw =
+    "roleId" in userData
+      ? (userData as { roleId?: unknown }).roleId
+      : "roleid" in userData
+      ? (userData as { roleid?: unknown }).roleid
+      : undefined;
+
+  const idRaw =
+    "id" in userData
+      ? (userData as { id?: unknown }).id
+      : "_id" in userData
+      ? (userData as { _id?: unknown })._id
+      : undefined;
+
+  const nameRaw = "name" in userData ? (userData as { name?: unknown }).name : undefined;
+  const emailRaw = "email" in userData ? (userData as { email?: unknown }).email : undefined;
+  const roleId = Number(roleRaw);
+
+  if (roleId !== 2) {
+    return null;
+  }
+
+  const isActiveRaw =
+    "isActive" in userData ? (userData as { isActive?: unknown }).isActive : true;
+
+  return {
+    id: String(idRaw ?? ""),
+    name: String(nameRaw ?? ""),
+    email: String(emailRaw ?? ""),
+    roleId: 2,
+    isActive: isActiveRaw !== false,
+  };
+};
+
+const finalizeRoleTwoSession = async (payload: LoginResponse) => {
+  const token = typeof payload.token === "string" ? payload.token : "";
+  if (!token) {
+    return {
+      ok: false,
+      status: 500,
+      data: payload,
+      message: "Login response did not include a token.",
+    } satisfies ApiResult<LoginResponse>;
+  }
+
+  const user = extractRoleTwoUser(payload);
+  if (!user) {
+    clearAuthToken();
+    return {
+      ok: false,
+      status: 403,
+      data: payload,
+      message: "This mobile app is available only for role 2 accounts.",
+    } satisfies ApiResult<LoginResponse>;
+  }
+
+  setAuthToken(token);
+  setCurrentUser(user);
+  await persistAuthSession({
+    token,
+    user,
+    expiresAt: Date.now() + ONE_DAY_MS,
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    data: payload,
+    message:
+      typeof payload.message === "string" && payload.message
+        ? payload.message
+        : "Login successful",
+  } satisfies ApiResult<LoginResponse>;
+};
+
 export const loginuser = async (data: { email: string; password: string }) => {
   try {
-    const response = await API.post("/api/auth/login", data);
-
-    const token =
-      typeof response.data === "object" &&
-      response.data !== null &&
-      "token" in response.data
-        ? String((response.data as { token?: unknown }).token || "")
-        : "";
-
-    if (token) {
-      setAuthToken(token);
-    }
-
-    // Reset cached user each login attempt, then set only when payload is valid.
+    const response = await API.post<LoginResponse>("/api/auth/login", data);
     setCurrentUser(null);
+    clearAuthToken();
 
-    const userData =
-      typeof response.data === "object" &&
-      response.data !== null &&
-      "user" in response.data
-        ? (response.data as { user?: unknown }).user
-        : null;
-
-    if (userData && typeof userData === "object") {
-      const roleRaw =
-        "roleId" in userData
-          ? (userData as { roleId?: unknown }).roleId
-          : "roleid" in userData
-          ? (userData as { roleid?: unknown }).roleid
-          : undefined;
-
-      const idRaw =
-        "id" in userData
-          ? (userData as { id?: unknown }).id
-          : "_id" in userData
-          ? (userData as { _id?: unknown })._id
-          : undefined;
-
-      const nameRaw = "name" in userData ? (userData as { name?: unknown }).name : undefined;
-      const emailRaw = "email" in userData ? (userData as { email?: unknown }).email : undefined;
-
-      const roleId = Number(roleRaw);
-      if (roleId === 1 || roleId === 2) {
-        const isActiveRaw =
-          "isActive" in userData ? (userData as { isActive?: unknown }).isActive : true;
-        const user = {
-          id: String(idRaw ?? ""),
-          name: String(nameRaw ?? ""),
-          email: String(emailRaw ?? ""),
-          roleId,
-          isActive: isActiveRaw !== false,
-        };
-        setCurrentUser(user);
-        if (token) {
-          await persistAuthSession({
-            token,
-            user,
-            expiresAt: Date.now() + ONE_DAY_MS,
-          });
-        }
-      }
+    if (response.data?.requiresVerification) {
+      return asApiResult<LoginResponse>(response.status, response.data);
     }
 
-    return asApiResult(response.status, response.data);
+    const finalized = await finalizeRoleTwoSession(response.data ?? {});
+    if (!finalized.ok) {
+      return finalized;
+    }
+
+    return asApiResult<LoginResponse>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to login. Please try again.");
+  }
+};
+
+export const verifyLoginCode = async (verificationToken: string, code: string) => {
+  try {
+    const response = await API.post<LoginResponse>("/api/auth/verify-login", {
+      verificationToken,
+      code,
+    });
+
+    setCurrentUser(null);
+    clearAuthToken();
+
+    const finalized = await finalizeRoleTwoSession(response.data ?? {});
+    if (!finalized.ok) {
+      return finalized;
+    }
+
+    return asApiResult<LoginResponse>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to verify login code. Please try again.");
   }
 };
 
@@ -480,54 +568,26 @@ export const register = async (
   name: string,
   email: string,
   password: string,
-  roleId: 1 | 2 = 2,
-) => registerUser({ name, email, password, roleId });
+) => registerUser({ name, email, password, roleId: 2 });
 
 export const login = async (email: string, password: string) =>
   loginuser({ email, password });
 
-export const createAdminRoute = async (routeName: string) => {
+export const createRoute = async (routeName: string, cityName: string) => {
   try {
-    const response = await API.post("/api/admin/routes", { routeName });
+    const response = await API.post("/api/admin/routes", { routeName, cityName });
     return asApiResult<{ data: AppRoute }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create route.");
   }
 };
 
-export const getAllAdminRoutes = async () => {
+export const getMyRoutes = async () => {
   try {
     const response = await API.get("/api/admin/routes");
     return asApiResult<{ data: AppRoute[] }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to fetch routes.");
-  }
-};
-
-export const getAdminRouteById = async (id: string) => {
-  try {
-    const response = await API.get(`/api/admin/routes/${id}`);
-    return asApiResult<{ data: AppRoute }>(response.status, response.data);
-  } catch (error) {
-    return asApiError(error, "Unable to fetch route.");
-  }
-};
-
-export const updateAdminRouteById = async (id: string, routeName: string) => {
-  try {
-    const response = await API.put(`/api/admin/routes/${id}`, { routeName });
-    return asApiResult<{ data: AppRoute }>(response.status, response.data);
-  } catch (error) {
-    return asApiError(error, "Unable to update route.");
-  }
-};
-
-export const deleteAdminRouteById = async (id: string) => {
-  try {
-    const response = await API.delete(`/api/admin/routes/${id}`);
-    return asApiResult(response.status, response.data);
-  } catch (error) {
-    return asApiError(error, "Unable to delete route.");
   }
 };
 
@@ -542,9 +602,8 @@ export const createShop = async (data: {
   imageUrl?: string;
 }) => {
   try {
-    const hasImage = Boolean(data.imageFile?.uri);
-
-    if (hasImage) {
+    if (data.imageFile?.uri) {
+      const imageFile = data.imageFile;
       const formData = new FormData();
       formData.append("routeId", data.routeId);
       formData.append("shopName", data.shopName);
@@ -561,18 +620,18 @@ export const createShop = async (data: {
       }
 
       const imageName =
-        data.imageFile.name ||
-        data.imageFile.uri.split("/").pop() ||
+        imageFile.name ||
+        imageFile.uri.split("/").pop() ||
         `shop-image-${Date.now()}.jpg`;
       const mimeType =
-        data.imageFile.mimeType ||
+        imageFile.mimeType ||
         (imageName.toLowerCase().endsWith(".png")
           ? "image/png"
           : imageName.toLowerCase().endsWith(".webp")
           ? "image/webp"
           : "image/jpeg");
       formData.append("image", {
-        uri: data.imageFile.uri,
+        uri: imageFile.uri,
         name: imageName,
         type: mimeType,
       } as unknown as Blob);
@@ -593,15 +652,6 @@ export const createShop = async (data: {
     return asApiResult<{ data: AppShop }>(response.status, response.data);
   } catch (error) {
     return asShopApiError(error, "Unable to create shop.");
-  }
-};
-
-export const getAdminShops = async () => {
-  try {
-    const response = await API.get("/api/admin/shops");
-    return asApiResult<{ data: AppShop[] }>(response.status, response.data);
-  } catch (error) {
-    return asShopApiError(error, "Unable to fetch shops.");
   }
 };
 
@@ -637,9 +687,8 @@ export const updateShopById = async (
   }
 ) => {
   try {
-    const hasImage = Boolean(data.imageFile?.uri);
-
-    if (hasImage) {
+    if (data.imageFile?.uri) {
+      const imageFile = data.imageFile;
       const formData = new FormData();
       formData.append("routeId", data.routeId);
       formData.append("shopName", data.shopName);
@@ -656,18 +705,18 @@ export const updateShopById = async (
       }
 
       const imageName =
-        data.imageFile.name ||
-        data.imageFile.uri.split("/").pop() ||
+        imageFile.name ||
+        imageFile.uri.split("/").pop() ||
         `shop-image-${Date.now()}.jpg`;
       const mimeType =
-        data.imageFile.mimeType ||
+        imageFile.mimeType ||
         (imageName.toLowerCase().endsWith(".png")
           ? "image/png"
           : imageName.toLowerCase().endsWith(".webp")
           ? "image/webp"
           : "image/jpeg");
       formData.append("image", {
-        uri: data.imageFile.uri,
+        uri: imageFile.uri,
         name: imageName,
         type: mimeType,
       } as unknown as Blob);
@@ -700,61 +749,37 @@ export const deleteShopById = async (id: string) => {
   }
 };
 
-const asAdminUser = (value: unknown): AdminUser | null => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const raw = value as Record<string, unknown>;
-  const role = Number(raw.roleId);
-  if (role !== 1 && role !== 2) {
-    return null;
-  }
-  return {
-    id: String(raw._id ?? raw.id ?? ""),
-    name: String(raw.name ?? ""),
-    email: String(raw.email ?? ""),
-    roleId: role,
-    isActive: raw.isActive !== false,
-    createdAt: String(raw.createdAt ?? ""),
-    updatedAt: String(raw.updatedAt ?? ""),
-  };
-};
-
-export const getAdminUsers = async (): Promise<ApiResult<{ data: AdminUser[] }>> => {
+export const getBillProducts = async () => {
   try {
-    const response = await API.get("/api/admin/users");
-    const payload = response.data as { data?: unknown };
-    const users = Array.isArray(payload?.data)
-      ? payload.data.map(asAdminUser).filter(Boolean)
-      : [];
-
-    return {
-      ok: true,
-      status: response.status,
-      data: { data: users as AdminUser[] },
-      message: getApiErrorMessage(response.data) || "Users fetched successfully",
-    };
+    const response = await API.get("/api/admin/products/catalog");
+    return asApiResult<{ data: AppProduct[] }>(response.status, response.data);
   } catch (error) {
-    return asApiError(error, "Unable to fetch users.") as ApiResult<{ data: AdminUser[] }>;
+    return asApiError(error, "Unable to fetch products.");
   }
 };
 
-export const updateAdminUserStatus = async (
-  id: string,
-  isActive: boolean,
-): Promise<ApiResult<{ data: AdminUser }>> => {
+export const getMyBills = async () => {
   try {
-    const response = await API.patch(`/api/admin/users/${id}/status`, { isActive });
-    const payload = response.data as { data?: unknown };
-    const user = asAdminUser(payload?.data);
-    return {
-      ok: true,
-      status: response.status,
-      data: user ? { data: user } : null,
-      message: getApiErrorMessage(response.data) || "User status updated",
-    };
+    const response = await API.get("/api/admin/bills/my-bills");
+    return asApiResult<{ data: AppBill[] }>(response.status, response.data);
   } catch (error) {
-    return asApiError(error, "Unable to update user status.") as ApiResult<{ data: AdminUser }>;
+    return asApiError(error, "Unable to fetch bills.");
+  }
+};
+
+export const createBill = async (data: {
+  routeId: string;
+  shopId: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+  }>;
+}) => {
+  try {
+    const response = await API.post("/api/admin/bills", data);
+    return asApiResult<{ data: AppBill }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to create bill.");
   }
 };
 

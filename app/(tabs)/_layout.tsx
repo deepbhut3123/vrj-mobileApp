@@ -25,8 +25,6 @@ export default function TabsLayout() {
     );
   }
 
-  const isAdmin = user.roleId === 1;
-
   return (
     <Tabs
       screenOptions={{
@@ -76,22 +74,21 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="admin-routes"
+        name="bills"
         options={{
-          title: t('tabs_route'),
-          href: isAdmin ? '/admin-routes' : null,
+          title: t('tabs_bill'),
+          href: '/bills',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'git-network' : 'git-network-outline'} size={22} color={color} />
+            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={22} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="users"
+        name="route-add"
         options={{
-          title: 'Users',
-          href: isAdmin ? '/users' : null,
+          title: t('tabs_route'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
+            <Ionicons name={focused ? 'add-circle' : 'add-circle-outline'} size={22} color={color} />
           ),
         }}
       />

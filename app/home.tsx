@@ -4,25 +4,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useI18n } from '@/constants/i18n';
 import {
-  getAdminShops,
-  getAdminUsers,
-  getAllAdminRoutes,
   getCurrentUser,
+  getMyBills,
+  getMyRoutes,
   getMyShops,
 } from '@/services/api';
 
 export default function HomeScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
-  const isAdmin = user?.roleId === 1;
   const firstName = (user?.name ?? 'User').split(' ')[0];
   const insets = useSafeAreaInsets();
   const [loadingStats, setLoadingStats] = useState(true);
   const [stats, setStats] = useState({
-    shops: 0,
-    routes: 0,
-    users: 0,
     myShops: 0,
+    myRoutes: 0,
+    myBills: 0,
   });
 
   useEffect(() => {
@@ -31,63 +28,38 @@ export default function HomeScreen() {
     const loadStats = async () => {
       setLoadingStats(true);
 
-      if (isAdmin) {
-        const [shopsResult, routesResult, usersResult] = await Promise.all([
-          getAdminShops(),
-          getAllAdminRoutes(),
-          getAdminUsers(),
-        ]);
+      const [myShopsResult, myRoutesResult, myBillsResult] = await Promise.all([
+        getMyShops(),
+        getMyRoutes(),
+        getMyBills(),
+      ]);
 
-        if (!active) {
-          return;
-        }
-
-        const shops =
-          shopsResult.ok && shopsResult.data && typeof shopsResult.data === 'object' && 'data' in shopsResult.data
-            ? Array.isArray((shopsResult.data as { data?: unknown }).data)
-              ? (shopsResult.data as { data: unknown[] }).data.length
-              : 0
-            : 0;
-        const routes =
-          routesResult.ok && routesResult.data && typeof routesResult.data === 'object' && 'data' in routesResult.data
-            ? Array.isArray((routesResult.data as { data?: unknown }).data)
-              ? (routesResult.data as { data: unknown[] }).data.length
-              : 0
-            : 0;
-        const users =
-          usersResult.ok && usersResult.data && typeof usersResult.data === 'object' && 'data' in usersResult.data
-            ? Array.isArray((usersResult.data as { data?: unknown }).data)
-              ? (usersResult.data as { data: unknown[] }).data.length
-              : 0
-            : 0;
-
-        setStats({
-          shops,
-          routes,
-          users,
-          myShops: 0,
-        });
-      } else {
-        const myShopsResult = await getMyShops();
-
-        if (!active) {
-          return;
-        }
-
-        const myShops =
-          myShopsResult.ok && myShopsResult.data && typeof myShopsResult.data === 'object' && 'data' in myShopsResult.data
-            ? Array.isArray((myShopsResult.data as { data?: unknown }).data)
-              ? (myShopsResult.data as { data: unknown[] }).data.length
-              : 0
-            : 0;
-
-        setStats({
-          shops: 0,
-          routes: 0,
-          users: 0,
-          myShops,
-        });
+      if (!active) {
+        return;
       }
+
+      const myShops =
+        myShopsResult.ok && myShopsResult.data && typeof myShopsResult.data === 'object' && 'data' in myShopsResult.data
+          ? Array.isArray((myShopsResult.data as { data?: unknown }).data)
+            ? (myShopsResult.data as { data: unknown[] }).data.length
+            : 0
+          : 0;
+
+      const myRoutes =
+        myRoutesResult.ok && myRoutesResult.data && typeof myRoutesResult.data === 'object' && 'data' in myRoutesResult.data
+          ? Array.isArray((myRoutesResult.data as { data?: unknown }).data)
+            ? (myRoutesResult.data as { data: unknown[] }).data.length
+            : 0
+          : 0;
+
+      const myBills =
+        myBillsResult.ok && myBillsResult.data && typeof myBillsResult.data === 'object' && 'data' in myBillsResult.data
+          ? Array.isArray((myBillsResult.data as { data?: unknown }).data)
+            ? (myBillsResult.data as { data: unknown[] }).data.length
+            : 0
+          : 0;
+
+      setStats({ myShops, myRoutes, myBills });
 
       if (active) {
         setLoadingStats(false);
@@ -99,7 +71,7 @@ export default function HomeScreen() {
     return () => {
       active = false;
     };
-  }, [isAdmin]);
+  }, []);
 
   return (
     <SafeAreaView style={[styles.page, { paddingTop: insets.top + 8 }]}>
@@ -111,13 +83,11 @@ export default function HomeScreen() {
           <Image source={require('../assets/images/image.png')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>{t('home_welcome_title')}</Text>
           <Text style={styles.subtitle}>{t('home_welcome_message', { name: firstName })}</Text>
-          <Text style={styles.roleText}>{isAdmin ? t('profile_admin') : t('profile_user')}</Text>
+          <Text style={styles.roleText}>{t('profile_user')}</Text>
         </View>
 
         <View style={styles.statsSection}>
-          <Text style={styles.statsTitle}>
-            {isAdmin ? t('home_stats_admin_title') : t('home_stats_user_title')}
-          </Text>
+          <Text style={styles.statsTitle}>{t('home_stats_user_title')}</Text>
 
           {loadingStats ? (
             <View style={styles.statsLoading}>
@@ -125,27 +95,18 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.statsGrid}>
-              {isAdmin ? (
-                <>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statValue}>{stats.shops}</Text>
-                    <Text style={styles.statLabel}>{t('home_stats_shops')}</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statValue}>{stats.routes}</Text>
-                    <Text style={styles.statLabel}>{t('home_stats_routes')}</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statValue}>{stats.users}</Text>
-                    <Text style={styles.statLabel}>{t('home_stats_users')}</Text>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.statCardWide}>
-                  <Text style={styles.statValue}>{stats.myShops}</Text>
-                  <Text style={styles.statLabel}>{t('home_stats_my_shops')}</Text>
-                </View>
-              )}
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.myShops}</Text>
+                <Text style={styles.statLabel}>{t('home_stats_my_shops')}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.myRoutes}</Text>
+                <Text style={styles.statLabel}>{t('routes_title')}</Text>
+              </View>
+              <View style={styles.statCardWide}>
+                <Text style={styles.statValue}>{stats.myBills}</Text>
+                <Text style={styles.statLabel}>{t('bills_title')}</Text>
+              </View>
             </View>
           )}
         </View>
@@ -250,18 +211,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
-  statCard: {
-    width: '47%',
-    minHeight: 108,
+  statCardWide: {
+    width: '100%',
+    minHeight: 118,
     borderRadius: 18,
     backgroundColor: '#F4FAF7',
     borderWidth: 1,
     borderColor: '#DCE9E2',
-    padding: 16,
+    padding: 18,
     justifyContent: 'space-between',
   },
-  statCardWide: {
-    width: '100%',
+  statCard: {
+    width: '48%',
     minHeight: 118,
     borderRadius: 18,
     backgroundColor: '#F4FAF7',

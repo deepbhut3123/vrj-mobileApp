@@ -26,7 +26,7 @@ export default function ProfileScreen() {
           <Text style={styles.label}>{t('home_email')}</Text>
           <Text style={styles.value}>{user?.email ?? '-'}</Text>
           <Text style={styles.label}>{t('profile_role')}</Text>
-          <Text style={styles.value}>{user?.roleId === 1 ? t('profile_admin') : t('profile_user')}</Text>
+          <Text style={styles.value}>{t('profile_user')}</Text>
         </View>
 
         <Pressable onPress={onLogout} style={styles.button}>

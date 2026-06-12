@@ -26,7 +26,6 @@ import {
   type UploadImageFile,
   createShop,
   deleteShopById,
-  getAdminShops,
   getCurrentUser,
   getMyShops,
   getShopRoutes,
@@ -36,10 +35,10 @@ import { useI18n } from '@/constants/i18n';
 
 const getRouteName = (shop: AppShop) => {
   if (shop.route && typeof shop.route === 'object' && 'routeName' in shop.route) {
-    return String(shop.route.routeName ?? 'Unknown route');
+    return [shop.route.routeName, shop.route.cityName].filter(Boolean).join(', ');
   }
   if (shop.routeId && typeof shop.routeId === 'object' && 'routeName' in shop.routeId) {
-    return String(shop.routeId.routeName ?? 'Unknown route');
+    return [shop.routeId.routeName, shop.routeId.cityName].filter(Boolean).join(', ');
   }
   return 'Unknown route';
 };
@@ -99,7 +98,6 @@ const getRouteId = (shop: AppShop) => {
 export default function ShopsScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
-  const isAdmin = user?.roleId === 1;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,7 +123,10 @@ export default function ShopsScreen() {
   const modalCardTranslateY = useRef(new Animated.Value(26)).current;
 
   const selectedRouteName = useMemo(
-    () => routes.find((route) => route._id === selectedRouteId)?.routeName ?? t('shops_select_route'),
+    () => {
+      const route = routes.find((item) => item._id === selectedRouteId);
+      return route ? `${route.routeName}, ${route.cityName}` : t('shops_select_route');
+    },
     [routes, selectedRouteId, t],
   );
 
@@ -195,7 +196,7 @@ export default function ShopsScreen() {
 
   const loadShops = useCallback(async () => {
     setLoading(true);
-    const result = isAdmin ? await getAdminShops() : await getMyShops();
+    const result = await getMyShops();
     setLoading(false);
 
     if (!result.ok) {
@@ -213,7 +214,7 @@ export default function ShopsScreen() {
         : [];
 
     setShops(list);
-  }, [isAdmin, t]);
+  }, [t]);
 
   const loadRoutes = useCallback(async () => {
     setRoutesLoading(true);
@@ -373,7 +374,7 @@ export default function ShopsScreen() {
       }
 
       const asset = result.assets[0];
-      if ((asset.size ?? 0) > 10 * 1024 * 1024) {
+      if ((asset.fileSize ?? 0) > 10 * 1024 * 1024) {
         Alert.alert(t('common_error'), 'Please take an image smaller than 10MB.');
         return;
       }
@@ -382,7 +383,7 @@ export default function ShopsScreen() {
         uri: asset.uri,
         name: asset.fileName ?? asset.assetId ?? `shop-image-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? undefined,
-        size: asset.size ?? undefined,
+        size: asset.fileSize ?? undefined,
       });
     } catch {
       Alert.alert(
@@ -511,7 +512,7 @@ export default function ShopsScreen() {
       <View style={styles.headerRow}>
         <View style={styles.headerTextBlock}>
           <Text style={styles.title}>{t('shops_title')}</Text>
-          <Text style={styles.subtitle}>{isAdmin ? t('shops_admin_subtitle') : t('shops_user_subtitle')}</Text>
+          <Text style={styles.subtitle}>{t('shops_user_subtitle')}</Text>
         </View>
         <Pressable disabled={routesLoading} onPress={onAddShopPress} style={styles.addButton}>
           <Text style={styles.addButtonText}>{t('shops_add')}</Text>
@@ -548,9 +549,6 @@ export default function ShopsScreen() {
                     <Text style={styles.smallBtnText}>Map</Text>
                   </Pressable>
                 </View>
-                {isAdmin ? (
-                  <Text style={styles.metaText}>{t('shops_created')}: {new Date(shop.createdAt).toLocaleString()}</Text>
-                ) : null}
               </View>
             );
           })}
@@ -697,7 +695,7 @@ export default function ShopsScreen() {
                       styles.routeOptionText,
                       selectedRouteId === route._id ? styles.routeOptionTextActive : null,
                     ]}>
-                    {route.routeName}
+                    {route.routeName} - {route.cityName}
                   </Text>
                 </Pressable>
               ))}
@@ -829,11 +827,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
-  },
-  metaText: {
-    marginTop: 10,
-    fontSize: 12,
-    color: '#6A7781',
   },
   emptyState: {
     marginTop: 40,
