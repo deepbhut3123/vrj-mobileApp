@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,14 +14,16 @@ import {
 } from 'react-native';
 
 import { useI18n } from '@/constants/i18n';
-import { forgotPassword } from '@/services/api';
+import { forgotPassword, verifyResetOtp } from '@/services/api';
 
 export default function ForgotPasswordScreen() {
   const { t } = useI18n();
   const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpStep, setOtpStep] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = async () => {
+  const onSendOtp = async () => {
     if (!email.trim()) {
       Alert.alert(t('forgot_missing_email_title'), t('forgot_missing_email_message'));
       return;
@@ -36,7 +38,41 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    Alert.alert(t('forgot_success_title'), result.message || t('forgot_success_message'));
+    setOtpStep(true);
+    Alert.alert(t('forgot_success_title'), result.message || t('forgot_otp_sent_message'));
+  };
+
+  const onVerifyOtp = async () => {
+    if (!otp.trim()) {
+      Alert.alert(t('common_validation'), t('forgot_missing_otp'));
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await verifyResetOtp(email.trim(), otp.trim());
+    setSubmitting(false);
+
+    if (!result.ok) {
+      Alert.alert(t('forgot_failed'), result.message);
+      return;
+    }
+
+    const resetToken =
+      result.data && typeof result.data === 'object' && 'resetToken' in result.data
+        ? String(result.data.resetToken || '')
+        : '';
+
+    if (!resetToken) {
+      Alert.alert(t('forgot_failed'), t('forgot_missing_reset_token'));
+      return;
+    }
+
+    Alert.alert(t('forgot_otp_verified_title'), result.message || t('forgot_otp_verified_message'), [
+      {
+        text: t('common_close'),
+        onPress: () => router.push({ pathname: '/reset-password', params: { token: resetToken } }),
+      },
+    ]);
   };
 
   return (
@@ -46,7 +82,7 @@ export default function ForgotPasswordScreen() {
         style={styles.keyboardWrap}>
         <View style={styles.card}>
           <Text style={styles.heading}>{t('forgot_title')}</Text>
-          <Text style={styles.subheading}>{t('forgot_subtitle')}</Text>
+          <Text style={styles.subheading}>{otpStep ? t('forgot_enter_otp') : t('forgot_subtitle')}</Text>
 
           <TextInput
             autoCapitalize="none"
@@ -57,15 +93,37 @@ export default function ForgotPasswordScreen() {
             placeholderTextColor="#8D95A3"
             style={styles.input}
             value={email}
+            editable={!otpStep}
           />
 
-          <Pressable disabled={submitting} onPress={onSubmit} style={styles.primaryButton}>
-            {submitting ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryButtonText}>{t('forgot_send_link')}</Text>
-            )}
-          </Pressable>
+          {otpStep ? (
+            <>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={setOtp}
+                placeholder={t('forgot_otp_placeholder')}
+                placeholderTextColor="#8D95A3"
+                style={styles.input}
+                value={otp}
+              />
+
+              <Pressable disabled={submitting} onPress={onVerifyOtp} style={styles.primaryButton}>
+                {submitting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>{t('forgot_verify_otp')}</Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <Pressable disabled={submitting} onPress={onSendOtp} style={styles.primaryButton}>
+              {submitting ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>{t('forgot_send_link')}</Text>
+              )}
+            </Pressable>
+          )}
 
           <Link href="/" style={styles.backLink}>
             {t('forgot_back_signin')}

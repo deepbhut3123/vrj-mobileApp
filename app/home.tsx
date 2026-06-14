@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Image, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useI18n } from '@/constants/i18n';
@@ -16,69 +17,73 @@ export default function HomeScreen() {
   const firstName = (user?.name ?? 'User').split(' ')[0];
   const insets = useSafeAreaInsets();
   const [loadingStats, setLoadingStats] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     myShops: 0,
     myRoutes: 0,
     myBills: 0,
   });
 
-  useEffect(() => {
-    let active = true;
-
-    const loadStats = async () => {
+  const loadStats = useCallback(async (mode: 'load' | 'refresh' = 'load') => {
+    if (mode === 'refresh') {
+      setRefreshing(true);
+    } else {
       setLoadingStats(true);
+    }
 
-      const [myShopsResult, myRoutesResult, myBillsResult] = await Promise.all([
-        getMyShops(),
-        getMyRoutes(),
-        getMyBills(),
-      ]);
+    const [myShopsResult, myRoutesResult, myBillsResult] = await Promise.all([
+      getMyShops(),
+      getMyRoutes(),
+      getMyBills(),
+    ]);
 
-      if (!active) {
-        return;
-      }
+    const myShops =
+      myShopsResult.ok && myShopsResult.data && typeof myShopsResult.data === 'object' && 'data' in myShopsResult.data
+        ? Array.isArray((myShopsResult.data as { data?: unknown }).data)
+          ? (myShopsResult.data as { data: unknown[] }).data.length
+          : 0
+        : 0;
 
-      const myShops =
-        myShopsResult.ok && myShopsResult.data && typeof myShopsResult.data === 'object' && 'data' in myShopsResult.data
-          ? Array.isArray((myShopsResult.data as { data?: unknown }).data)
-            ? (myShopsResult.data as { data: unknown[] }).data.length
-            : 0
-          : 0;
+    const myRoutes =
+      myRoutesResult.ok && myRoutesResult.data && typeof myRoutesResult.data === 'object' && 'data' in myRoutesResult.data
+        ? Array.isArray((myRoutesResult.data as { data?: unknown }).data)
+          ? (myRoutesResult.data as { data: unknown[] }).data.length
+          : 0
+        : 0;
 
-      const myRoutes =
-        myRoutesResult.ok && myRoutesResult.data && typeof myRoutesResult.data === 'object' && 'data' in myRoutesResult.data
-          ? Array.isArray((myRoutesResult.data as { data?: unknown }).data)
-            ? (myRoutesResult.data as { data: unknown[] }).data.length
-            : 0
-          : 0;
+    const myBills =
+      myBillsResult.ok && myBillsResult.data && typeof myBillsResult.data === 'object' && 'data' in myBillsResult.data
+        ? Array.isArray((myBillsResult.data as { data?: unknown }).data)
+          ? (myBillsResult.data as { data: unknown[] }).data.length
+          : 0
+        : 0;
 
-      const myBills =
-        myBillsResult.ok && myBillsResult.data && typeof myBillsResult.data === 'object' && 'data' in myBillsResult.data
-          ? Array.isArray((myBillsResult.data as { data?: unknown }).data)
-            ? (myBillsResult.data as { data: unknown[] }).data.length
-            : 0
-          : 0;
-
-      setStats({ myShops, myRoutes, myBills });
-
-      if (active) {
-        setLoadingStats(false);
-      }
-    };
-
-    void loadStats();
-
-    return () => {
-      active = false;
-    };
+    setStats({ myShops, myRoutes, myBills });
+    setLoadingStats(false);
+    setRefreshing(false);
   }, []);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadStats('refresh');
+    }, [loadStats]),
+  );
 
   return (
     <SafeAreaView style={[styles.page, { paddingTop: insets.top + 8 }]}>
       <View style={styles.bgOrbTop} />
       <View style={styles.bgOrbBottom} />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void loadStats('refresh')} tintColor="#0F5D33" />
+        }>
         <View style={styles.heroCard}>
           <Image source={require('../assets/images/image.png')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.title}>{t('home_welcome_title')}</Text>

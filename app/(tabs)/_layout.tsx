@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useI18n } from '@/constants/i18n';
 import { getCurrentUser } from '@/services/api';
@@ -10,6 +11,7 @@ export default function TabsLayout() {
   const { t } = useI18n();
   const router = useRouter();
   const user = getCurrentUser();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!user) {
@@ -35,8 +37,8 @@ export default function TabsLayout() {
           position: 'absolute',
           left: 14,
           right: 14,
-          bottom: 14,
-          height: 70,
+          bottom: 0,
+          height: 62 + Math.max(insets.bottom, 8),
           borderRadius: 24,
           backgroundColor: '#FFFFFF',
           borderTopWidth: 0,
@@ -45,7 +47,7 @@ export default function TabsLayout() {
           shadowOpacity: 0.14,
           shadowRadius: 18,
           elevation: 16,
-          paddingBottom: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8,
         },
         tabBarLabelStyle: {

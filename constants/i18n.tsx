@@ -52,12 +52,30 @@ type TranslationKey =
   | "forgot_title"
   | "forgot_subtitle"
   | "forgot_send_link"
+  | "forgot_enter_otp"
+  | "forgot_otp_placeholder"
+  | "forgot_verify_otp"
+  | "forgot_missing_otp"
+  | "forgot_otp_sent_message"
+  | "forgot_otp_verified_title"
+  | "forgot_otp_verified_message"
+  | "forgot_missing_reset_token"
   | "forgot_missing_email_title"
   | "forgot_missing_email_message"
   | "forgot_failed"
   | "forgot_success_title"
   | "forgot_success_message"
   | "forgot_back_signin"
+  | "reset_title"
+  | "reset_subtitle"
+  | "reset_new_password"
+  | "reset_confirm_password"
+  | "reset_submit"
+  | "reset_missing_fields"
+  | "reset_password_mismatch"
+  | "reset_failed"
+  | "reset_success_title"
+  | "reset_success_message"
   | "home_title"
   | "home_subtitle"
   | "home_name"
@@ -146,7 +164,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_home: "Home",
     tabs_shop: "Shop",
     tabs_bill: "Bills",
-    tabs_route: "Add Route",
+    tabs_route: "Route",
     tabs_settings: "Settings",
     common_cancel: "Cancel",
     common_save: "Save",
@@ -162,14 +180,17 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     auth_forgot_password: "Forgot password?",
     auth_sign_in: "Sign In",
     auth_verification_title: "Verification required",
-    auth_verification_subtitle: "Enter the authentication code sent to {{email}}.",
+    auth_verification_subtitle:
+      "Enter the 6-digit code from admin Google Authenticator.",
     auth_verification_code: "Google authentication code",
     auth_verification_missing_code: "Please enter the authentication code.",
     auth_verify_code: "Verify Code",
     auth_back_to_login: "Back to login",
     auth_verification_heading: "Enter Verification Code",
-    auth_verification_helper: "We sent the approval code to {{email}}. Enter that code to finish login.",
-    auth_verification_notice: "Your email and password are already checked. Only the verification code is needed now.",
+    auth_verification_helper:
+      "Ask admin for the current Google Authenticator code and enter that 6-digit code here.",
+    auth_verification_notice:
+      "Your email and password are already checked. Only the authenticator code is needed now.",
     auth_change_credentials: "Use different login details",
     auth_no_account: "Don't have an account?",
     auth_register: "Register",
@@ -182,14 +203,32 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     register_success_message: "Registration successful.",
     register_failed: "Registration failed",
     forgot_title: "Forgot Password",
-    forgot_subtitle: "We will send reset instructions to your email.",
-    forgot_send_link: "Send Link",
+    forgot_subtitle: "We will send a password reset OTP to your email.",
+    forgot_send_link: "Send OTP",
+    forgot_enter_otp: "Enter OTP",
+    forgot_otp_placeholder: "6-digit OTP",
+    forgot_verify_otp: "Verify OTP",
+    forgot_missing_otp: "Please enter the OTP sent to your email.",
+    forgot_otp_sent_message: "Password reset OTP sent to your email.",
+    forgot_otp_verified_title: "OTP verified",
+    forgot_otp_verified_message: "OTP verified successfully.",
+    forgot_missing_reset_token: "Reset token missing from OTP verification response.",
     forgot_missing_email_title: "Missing email",
     forgot_missing_email_message: "Please enter your email address.",
     forgot_failed: "Request failed",
     forgot_success_title: "Check your email",
-    forgot_success_message: "Password reset instructions sent.",
+    forgot_success_message: "Password reset OTP sent to your email.",
     forgot_back_signin: "Back to Sign In",
+    reset_title: "Reset Password",
+    reset_subtitle: "Choose your new password.",
+    reset_new_password: "New password",
+    reset_confirm_password: "Confirm password",
+    reset_submit: "Update Password",
+    reset_missing_fields: "Please enter both password fields.",
+    reset_password_mismatch: "Passwords do not match.",
+    reset_failed: "Reset failed",
+    reset_success_title: "Password updated",
+    reset_success_message: "Your password has been reset successfully.",
     home_title: "Login Successful",
     home_subtitle: "Welcome to home.",
     home_name: "Name",
@@ -239,14 +278,18 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     shops_upload_image: "Take Photo",
     shops_change_image: "Retake Photo",
     shops_image_url_fallback: "Or paste image URL (fallback)",
-    shops_validation_fields: "Route, shop name, shop address and mobile number are required.",
+    shops_validation_fields:
+      "Route, shop name, shop address and mobile number are required.",
     shops_no_routes: "No routes available.",
     shops_permission_title: "Permission required",
-    shops_permission_message: "Please allow camera access to capture a shop image.",
+    shops_permission_message:
+      "Please allow camera access to capture a shop image.",
     shops_picker_unavailable_title: "Camera unavailable",
-    shops_picker_unavailable_message: "Please rebuild the app once, then reopen it.",
+    shops_picker_unavailable_message:
+      "Please rebuild the app once, then reopen it.",
     bills_title: "My Bills",
-    bills_subtitle: "Create bills from your route, shop, and admin product list.",
+    bills_subtitle:
+      "Create bills from your route, shop, and admin product list.",
     bills_add: "Add Bill",
     bills_no_data: "No bills created yet.",
     bills_status: "Status",
@@ -258,7 +301,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     bills_products_title: "Products",
     bills_quantity: "Quantity",
     bills_create: "Create Bill",
-    bills_validation: "Please select route, shop, and at least one product quantity.",
+    bills_validation:
+      "Please select route, shop, and at least one product quantity.",
     bills_total_sticky: "Bill Total",
     bills_route_picker_title: "Choose Route",
     bills_shop_picker_title: "Choose Shop",
@@ -277,7 +321,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_home: "હોમ",
     tabs_shop: "દુકાન",
     tabs_bill: "બિલ",
-    tabs_route: "રૂટ ઉમેરો",
+    tabs_route: "રૂટ",
     tabs_settings: "સેટિંગ્સ",
     common_cancel: "રદ કરો",
     common_save: "સેવ કરો",
@@ -293,14 +337,17 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     auth_forgot_password: "પાસવર્ડ ભૂલી ગયા?",
     auth_sign_in: "સાઇન ઇન",
     auth_verification_title: "ચકાસણી જરૂરી",
-    auth_verification_subtitle: "{{email}} પર મોકલાયેલ ઓથેન્ટિકેશન કોડ દાખલ કરો.",
+    auth_verification_subtitle:
+      "Admin Google Authenticator માંથી 6 અંકનો કોડ દાખલ કરો.",
     auth_verification_code: "ગૂગલ ઓથેન્ટિકેશન કોડ",
     auth_verification_missing_code: "કૃપા કરીને ઓથેન્ટિકેશન કોડ દાખલ કરો.",
     auth_verify_code: "કોડ ચકાસો",
     auth_back_to_login: "લૉગિન પર પાછા જાઓ",
     auth_verification_heading: "ચકાસણી કોડ દાખલ કરો",
-    auth_verification_helper: "{{email}} પર મંજૂરી કોડ મોકલવામાં આવ્યો છે. લૉગિન પૂર્ણ કરવા તે કોડ દાખલ કરો.",
-    auth_verification_notice: "તમારી ઇમેલ અને પાસવર્ડ પહેલાથી ચકાસાઈ ગયા છે. હવે માત્ર ચકાસણી કોડ જરૂરી છે.",
+    auth_verification_helper:
+      "Admin પાસેથી હાલનો Google Authenticator કોડ પૂછો અને તે 6 અંકનો કોડ અહીં દાખલ કરો.",
+    auth_verification_notice:
+      "તમારી ઇમેલ અને પાસવર્ડ પહેલાથી ચકાસાઈ ગયા છે. હવે માત્ર authenticator કોડ જરૂરી છે.",
     auth_change_credentials: "અલગ લૉગિન વિગતો વાપરો",
     auth_no_account: "એકાઉન્ટ નથી?",
     auth_register: "રજિસ્ટર",
@@ -313,14 +360,32 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     register_success_message: "રજિસ્ટ્રેશન સફળ થયું.",
     register_failed: "રજિસ્ટ્રેશન નિષ્ફળ",
     forgot_title: "પાસવર્ડ ભૂલી ગયા",
-    forgot_subtitle: "અમે તમારી ઇમેલ પર રીસેટ સૂચનાઓ મોકલીશું.",
-    forgot_send_link: "લિંક મોકલો",
+    forgot_subtitle: "અમે તમારી ઇમેલ પર પાસવર્ડ રીસેટ OTP મોકલીશું.",
+    forgot_send_link: "OTP મોકલો",
+    forgot_enter_otp: "OTP દાખલ કરો",
+    forgot_otp_placeholder: "6 અંકનો OTP",
+    forgot_verify_otp: "OTP ચકાસો",
+    forgot_missing_otp: "કૃપા કરીને તમારી ઇમેલ પર આવેલ OTP દાખલ કરો.",
+    forgot_otp_sent_message: "પાસવર્ડ રીસેટ OTP તમારી ઇમેલ પર મોકલાયો છે.",
+    forgot_otp_verified_title: "OTP ચકાસાઈ ગયો",
+    forgot_otp_verified_message: "OTP સફળતાપૂર્વક ચકાસાઈ ગયો.",
+    forgot_missing_reset_token: "OTP ચકાસણી પછી રીસેટ ટોકન મળ્યો નથી.",
     forgot_missing_email_title: "ઇમેલ ખૂટે છે",
     forgot_missing_email_message: "કૃપા કરીને તમારી ઇમેલ દાખલ કરો.",
     forgot_failed: "વિનંતી નિષ્ફળ",
     forgot_success_title: "તમારી ઇમેલ ચેક કરો",
-    forgot_success_message: "પાસવર્ડ રીસેટ સૂચનાઓ મોકલવામાં આવી.",
+    forgot_success_message: "પાસવર્ડ રીસેટ OTP મોકલવામાં આવ્યો.",
     forgot_back_signin: "પાછા સાઇન ઇન પર",
+    reset_title: "પાસવર્ડ રીસેટ કરો",
+    reset_subtitle: "તમારો નવો પાસવર્ડ પસંદ કરો.",
+    reset_new_password: "નવો પાસવર્ડ",
+    reset_confirm_password: "પાસવર્ડની પુષ્ટિ કરો",
+    reset_submit: "પાસવર્ડ અપડેટ કરો",
+    reset_missing_fields: "કૃપા કરીને બંને પાસવર્ડ ફીલ્ડ भरो.",
+    reset_password_mismatch: "પાસવર્ડ એકસરખા નથી.",
+    reset_failed: "રીસેટ નિષ્ફળ",
+    reset_success_title: "પાસવર્ડ અપડેટ થયો",
+    reset_success_message: "તમારો પાસવર્ડ સફળતાપૂર્વક રીસેટ થયો.",
     home_title: "લૉગિન સફળ",
     home_subtitle: "હોમમાં સ્વાગત છે.",
     home_name: "નામ",
@@ -370,7 +435,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     shops_upload_image: "ફોટો લો",
     shops_change_image: "ફરી ફોટો લો",
     shops_image_url_fallback: "અથવા ઇમેજ URL પેસ્ટ કરો",
-    shops_validation_fields: "રૂટ, દુકાન નામ, દુકાન સરનામું અને મોબાઇલ નંબર જરૂરી છે.",
+    shops_validation_fields:
+      "રૂટ, દુકાન નામ, દુકાન સરનામું અને મોબાઇલ નંબર જરૂરી છે.",
     shops_no_routes: "કોઈ રૂટ ઉપલબ્ધ નથી.",
     shops_permission_title: "પરવાનગી જરૂરી",
     shops_permission_message: "દુકાનની ઇમેજ લેવા કેમેરા પરવાનગી આપો.",
@@ -389,7 +455,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     bills_products_title: "પ્રોડક્ટ્સ",
     bills_quantity: "જથ્થો",
     bills_create: "બિલ બનાવો",
-    bills_validation: "કૃપા કરીને રૂટ, દુકાન અને ઓછામાં ઓછી એક પ્રોડક્ટ જથ્થો પસંદ કરો.",
+    bills_validation:
+      "કૃપા કરીને રૂટ, દુકાન અને ઓછામાં ઓછી એક પ્રોડક્ટ જથ્થો પસંદ કરો.",
     bills_total_sticky: "બિલ કુલ",
     bills_route_picker_title: "રૂટ પસંદ કરો",
     bills_shop_picker_title: "દુકાન પસંદ કરો",
@@ -443,7 +510,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       language,
       setLanguage,
       t: (key, vars) => {
-        const raw = translations[language]?.[key] ?? translations.en[key] ?? key;
+        const raw =
+          translations[language]?.[key] ?? translations.en[key] ?? key;
         if (!vars) {
           return raw;
         }

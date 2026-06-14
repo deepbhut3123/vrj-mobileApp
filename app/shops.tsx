@@ -11,14 +11,15 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import {
   type AppRoute,
@@ -32,6 +33,7 @@ import {
   updateShopById,
 } from '@/services/api';
 import { useI18n } from '@/constants/i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getRouteName = (shop: AppShop) => {
   if (shop.route && typeof shop.route === 'object' && 'routeName' in shop.route) {
@@ -98,8 +100,10 @@ const getRouteId = (shop: AppShop) => {
 export default function ShopsScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [shops, setShops] = useState<AppShop[]>([]);
@@ -242,7 +246,7 @@ export default function ShopsScreen() {
       setLoading(false);
       return;
     }
-    loadShops();
+    void loadShops();
   }, [loadShops, user]);
 
   useEffect(() => {
@@ -251,6 +255,21 @@ export default function ShopsScreen() {
     }
     loadRoutes();
   }, [loadRoutes, user]);
+
+  const refreshScreen = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadShops(), loadRoutes()]);
+    setRefreshing(false);
+  }, [loadRoutes, loadShops]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        return;
+      }
+      void refreshScreen();
+    }, [refreshScreen, user]),
+  );
 
   const openCreateModal = () => {
     setEditingShopId(null);
@@ -498,7 +517,7 @@ export default function ShopsScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.page}>
+      <SafeAreaView style={[styles.page, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.center}>
           <Text style={styles.title}>Login required</Text>
           <Text style={styles.subtitle}>Please sign in first.</Text>
@@ -508,7 +527,7 @@ export default function ShopsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.page}>
+    <SafeAreaView style={[styles.page, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View style={styles.headerRow}>
         <View style={styles.headerTextBlock}>
           <Text style={styles.title}>{t('shops_title')}</Text>
@@ -524,7 +543,12 @@ export default function ShopsScreen() {
           <ActivityIndicator size="large" color="#0F5D33" />
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listWrap}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.listWrap, { paddingBottom: Math.max(insets.bottom, 24) }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void refreshScreen()} tintColor="#0F5D33" />
+          }>
           {shops.map((shop) => {
             const image = getShopImage(shop);
             return (
@@ -562,7 +586,15 @@ export default function ShopsScreen() {
       )}
 
       <Modal animationType="none" transparent visible={modalVisible} onRequestClose={() => closeShopModal()}>
-        <Animated.View style={[styles.modalBackdrop, { opacity: modalBackdropOpacity }]}>
+        <Animated.View
+          style={[
+            styles.modalBackdrop,
+            {
+              opacity: modalBackdropOpacity,
+              paddingTop: insets.top + 12,
+              paddingBottom: Math.max(insets.bottom, 12),
+            },
+          ]}>
           <Animated.View
             style={[
               styles.modalCard,
@@ -582,72 +614,81 @@ export default function ShopsScreen() {
               </Text>
             </View>
 
-            <View style={styles.modalBody}>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Route</Text>
-                <Pressable onPress={() => setRoutePickerVisible(true)} style={[styles.input, styles.selectorInput]}>
-                  <Text style={selectedRouteId ? styles.inputValue : styles.inputPlaceholder}>{selectedRouteName}</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Shop Name</Text>
-                <TextInput
-                  value={shopName}
-                  onChangeText={setShopName}
-                  placeholder={t('shops_shop_name')}
-                  style={styles.input}
-                  placeholderTextColor="#8D95A3"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Shop Address</Text>
-                <TextInput
-                  value={shopAddress}
-                  onChangeText={setShopAddress}
-                  placeholder={t('shops_shop_address')}
-                  style={[styles.input, styles.addressInput]}
-                  multiline
-                  placeholderTextColor="#8D95A3"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Mobile Number</Text>
-                <TextInput
-                  value={mobileNumber}
-                  onChangeText={(value) => setMobileNumber(value.replace(/\D/g, ''))}
-                  placeholder={t('shops_mobile_number')}
-                  style={styles.input}
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                  placeholderTextColor="#8D95A3"
-                />
-              </View>
-
-              <View style={styles.photoSection}>
-                <View>
-                  <Text style={styles.fieldLabel}>Shop Photo</Text>
-                  <Text style={styles.photoHint}>Camera capture only for clearer shop records.</Text>
-                </View>
-                {imageFile?.uri ? (
-                  <Pressable onPress={() => openImagePreview(imageFile.uri)}>
-                    <Image source={{ uri: imageFile.uri }} style={styles.previewImage} resizeMode="cover" />
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={[
+                styles.modalScrollContent,
+                { paddingBottom: Math.max(insets.bottom, 12) },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled">
+              <View style={styles.modalBody}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Route</Text>
+                  <Pressable onPress={() => setRoutePickerVisible(true)} style={[styles.input, styles.selectorInput]}>
+                    <Text style={selectedRouteId ? styles.inputValue : styles.inputPlaceholder}>{selectedRouteName}</Text>
                   </Pressable>
-                ) : (
-                  <View style={styles.emptyPreview}>
-                    <Text style={styles.emptyPreviewTitle}>Photo preview will appear here</Text>
-                    <Text style={styles.emptyPreviewText}>Capture the storefront or board so records stay easy to identify.</Text>
-                  </View>
-                )}
-                <Pressable onPress={pickImage} style={styles.uploadBtn}>
-                  <Text style={styles.uploadBtnText}>{imageFile?.uri ? t('shops_change_image') : t('shops_upload_image')}</Text>
-                </Pressable>
-              </View>
-            </View>
+                </View>
 
-            <View style={styles.modalActions}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Shop Name</Text>
+                  <TextInput
+                    value={shopName}
+                    onChangeText={setShopName}
+                    placeholder={t('shops_shop_name')}
+                    style={styles.input}
+                    placeholderTextColor="#8D95A3"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Shop Address</Text>
+                  <TextInput
+                    value={shopAddress}
+                    onChangeText={setShopAddress}
+                    placeholder={t('shops_shop_address')}
+                    style={[styles.input, styles.addressInput]}
+                    multiline
+                    placeholderTextColor="#8D95A3"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Mobile Number</Text>
+                  <TextInput
+                    value={mobileNumber}
+                    onChangeText={(value) => setMobileNumber(value.replace(/\D/g, ''))}
+                    placeholder={t('shops_mobile_number')}
+                    style={styles.input}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    placeholderTextColor="#8D95A3"
+                  />
+                </View>
+
+                <View style={styles.photoSection}>
+                  <View>
+                    <Text style={styles.fieldLabel}>Shop Photo</Text>
+                    <Text style={styles.photoHint}>Camera capture only for clearer shop records.</Text>
+                  </View>
+                  {imageFile?.uri ? (
+                    <Pressable onPress={() => openImagePreview(imageFile.uri)}>
+                      <Image source={{ uri: imageFile.uri }} style={styles.previewImage} resizeMode="cover" />
+                    </Pressable>
+                  ) : (
+                    <View style={styles.emptyPreview}>
+                      <Text style={styles.emptyPreviewTitle}>Photo preview will appear here</Text>
+                      <Text style={styles.emptyPreviewText}>Capture the storefront or board so records stay easy to identify.</Text>
+                    </View>
+                  )}
+                  <Pressable onPress={pickImage} style={styles.uploadBtn}>
+                    <Text style={styles.uploadBtnText}>{imageFile?.uri ? t('shops_change_image') : t('shops_upload_image')}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.modalActions, { paddingBottom: Math.max(insets.bottom, 14) }]}>
               <Pressable onPress={() => closeShopModal()} style={[styles.modalBtn, styles.cancelBtn]}>
                 <Text style={styles.cancelText}>{t('common_cancel')}</Text>
               </Pressable>
@@ -668,7 +709,15 @@ export default function ShopsScreen() {
         transparent
         visible={routePickerVisible}
         onRequestClose={() => setRoutePickerVisible(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setRoutePickerVisible(false)}>
+        <Pressable
+          style={[
+            styles.modalBackdrop,
+            {
+              paddingTop: insets.top + 12,
+              paddingBottom: Math.max(insets.bottom, 12),
+            },
+          ]}
+          onPress={() => setRoutePickerVisible(false)}>
           <Pressable style={styles.routePickerCard} onPress={() => {}}>
             <View style={styles.routePickerHeader}>
               <View style={styles.routePickerHandle} />
@@ -730,7 +779,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EAF4F1',
     paddingHorizontal: 14,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -846,9 +894,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(9, 17, 28, 0.52)',
     justifyContent: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 20,
   },
   modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '92%',
     backgroundColor: '#FDFEFE',
     borderRadius: 28,
     borderWidth: 1,
@@ -954,6 +1004,13 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
     gap: 12,
+  },
+  modalScrollView: {
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    paddingTop: 2,
   },
   fieldGroup: {
     gap: 6,

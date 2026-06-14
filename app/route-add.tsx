@@ -2,16 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useI18n } from '@/constants/i18n';
 import { createRoute, getCurrentUser, getMyRoutes, type AppRoute } from '@/services/api';
@@ -19,10 +20,12 @@ import { createRoute, getCurrentUser, getMyRoutes, type AppRoute } from '@/servi
 export default function RouteAddScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
+  const insets = useSafeAreaInsets();
   const [routeName, setRouteName] = useState('');
   const [cityName, setCityName] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [routes, setRoutes] = useState<AppRoute[]>([]);
 
   const loadRoutes = useCallback(async () => {
@@ -55,6 +58,21 @@ export default function RouteAddScreen() {
     void loadRoutes();
   }, [loadRoutes, user]);
 
+  const refreshScreen = useCallback(async () => {
+    setRefreshing(true);
+    await loadRoutes();
+    setRefreshing(false);
+  }, [loadRoutes]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        return;
+      }
+      void refreshScreen();
+    }, [refreshScreen, user]),
+  );
+
   const saveRoute = async () => {
     const name = routeName.trim();
     const city = cityName.trim();
@@ -83,8 +101,13 @@ export default function RouteAddScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.page}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    <SafeAreaView style={[styles.page, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 120) }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refreshScreen()} tintColor="#0F5D33" />
+        }>
         <View style={styles.header}>
           <Text style={styles.title}>{t('routes_title')}</Text>
           <Text style={styles.subtitle}>Create a route to use while adding shops.</Text>
@@ -153,7 +176,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EAF4F1',
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 12,
   },
   content: {
     paddingBottom: 120,

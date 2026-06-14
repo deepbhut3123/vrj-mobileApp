@@ -63,6 +63,7 @@ export type AppProduct = {
 export type AppBillItem = {
   productId: string | AppProduct;
   productName: string;
+  mrp?: number;
   productRate: number;
   quantity: number;
   total: number;
@@ -204,6 +205,10 @@ export type LoginResponse = {
   user?: unknown;
   requiresVerification?: boolean;
   verificationToken?: string;
+  verificationMethod?: "authenticator";
+  requiresAuthenticatorSetup?: boolean;
+  authenticatorSecret?: string;
+  otpauthUrl?: string;
   adminEmail?: string;
   message?: string;
 };
@@ -400,6 +405,36 @@ const asShopApiError = (error: unknown, fallback: string): ApiResult => {
   return asApiError(error, fallback);
 };
 
+const postWithFallback = async <T>(
+  paths: string[],
+  payload: unknown,
+  fallbackMessage: string,
+): Promise<ApiResult<T>> => {
+  let lastError: unknown = null;
+
+  for (const path of paths) {
+    try {
+      const response = await API.post<T>(path, payload);
+      return asApiResult<T>(response.status, response.data);
+    } catch (error) {
+      lastError = error;
+
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status ?? null;
+        const shouldTryNextPath = status === 404;
+
+        if (!shouldTryNextPath) {
+          return asApiError(error, fallbackMessage) as ApiResult<T>;
+        }
+      } else {
+        return asApiError(error, fallbackMessage) as ApiResult<T>;
+      }
+    }
+  }
+
+  return asApiError(lastError, fallbackMessage) as ApiResult<T>;
+};
+
 export const pingBackend = async (): Promise<ApiResult> => {
   try {
     const response = await API.get("/api/health");
@@ -561,6 +596,30 @@ export const forgotPassword = async (email: string) => {
     return asApiResult(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to process forgot password request.");
+  }
+};
+
+export const verifyResetOtp = async (email: string, otp: string) => {
+  try {
+    const response = await API.post("/api/auth/verify-reset-otp", {
+      email,
+      otp,
+    });
+    return asApiResult<{ resetToken?: string; message?: string }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to verify reset OTP.");
+  }
+};
+
+export const resetPassword = async (token: string, newPassword: string) => {
+  try {
+    const response = await API.post("/api/auth/reset-password", {
+      token,
+      newPassword,
+    });
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to reset password.");
   }
 };
 
@@ -780,6 +839,34 @@ export const createBill = async (data: {
     return asApiResult<{ data: AppBill }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create bill.");
+  }
+};
+
+export const updateBillById = async (
+  id: string,
+  data: {
+    routeId: string;
+    shopId: string;
+    items: Array<{
+      productId: string;
+      quantity: number;
+    }>;
+  }
+) => {
+  try {
+    const response = await API.put(`/api/admin/bills/${id}`, data);
+    return asApiResult<{ data: AppBill }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to update bill.");
+  }
+};
+
+export const deleteBillById = async (id: string) => {
+  try {
+    const response = await API.delete(`/api/admin/bills/${id}`);
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to delete bill.");
   }
 };
 

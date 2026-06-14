@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -11,23 +13,29 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useI18n } from '@/constants/i18n';
 import {
   type AppBill,
+  type AppBillItem,
   type AppProduct,
   type AppRoute,
   type AppShop,
   createBill,
+  deleteBillById,
   getBillProducts,
   getCurrentUser,
   getMyBills,
   getMyShops,
   getShopRoutes,
+  updateBillById,
 } from '@/services/api';
 
 const asCurrency = (value: number) => `Rs. ${value.toFixed(2)}`;
+const asTableAmount = (value: number) => value.toFixed(2);
 
 const getRouteLabel = (route: string | AppRoute | undefined) => {
   if (!route || typeof route === 'string') {
@@ -41,6 +49,27 @@ const getShopLabel = (shop: string | AppShop | undefined) => {
     return 'Unknown shop';
   }
   return shop.shopName;
+};
+
+const getBillItemProductId = (item: AppBillItem) => {
+  if (typeof item.productId === 'string') {
+    return item.productId;
+  }
+  if (item.productId && typeof item.productId === 'object' && '_id' in item.productId) {
+    return String(item.productId._id);
+  }
+  return '';
+};
+
+const getBillItemMrp = (item: AppBillItem) => {
+  if (typeof item.mrp === 'number' && Number.isFinite(item.mrp)) {
+    return item.mrp;
+  }
+  if (item.productId && typeof item.productId === 'object' && 'mrp' in item.productId) {
+    const mrp = Number(item.productId.mrp);
+    return Number.isFinite(mrp) ? mrp : null;
+  }
+  return null;
 };
 
 const extractList = <T,>(payload: unknown): T[] => {
@@ -57,6 +86,7 @@ export default function BillsScreen() {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [bills, setBills] = useState<AppBill[]>([]);
@@ -65,6 +95,8 @@ export default function BillsScreen() {
   const [products, setProducts] = useState<AppProduct[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
+  const [detailBill, setDetailBill] = useState<AppBill | null>(null);
   const [routePickerVisible, setRoutePickerVisible] = useState(false);
   const [shopPickerVisible, setShopPickerVisible] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -152,20 +184,71 @@ export default function BillsScreen() {
     void loadBills();
   }, [loadBills, user]);
 
+  const refreshScreen = useCallback(async () => {
+    setRefreshing(true);
+    await loadBills();
+    setRefreshing(false);
+  }, [loadBills]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        return;
+      }
+      void refreshScreen();
+    }, [refreshScreen, user]),
+  );
+
   const openCreateModal = async () => {
     const ready = await loadCatalogData();
     if (!ready) {
       return;
     }
 
+    setEditingBillId(null);
     setSelectedRouteId('');
     setSelectedShopId('');
     setQuantities({});
     setModalVisible(true);
   };
 
+  const openEditModal = async (bill: AppBill) => {
+    const ready = await loadCatalogData();
+    if (!ready) {
+      return;
+    }
+
+    const nextQuantities = bill.items.reduce<Record<string, string>>((acc, item) => {
+      const productId = getBillItemProductId(item);
+      if (productId && item.quantity > 0) {
+        acc[productId] = String(item.quantity);
+      }
+      return acc;
+    }, {});
+
+    const routeId =
+      typeof bill.routeId === 'string'
+        ? bill.routeId
+        : bill.routeId && typeof bill.routeId === 'object' && '_id' in bill.routeId
+        ? String(bill.routeId._id)
+        : '';
+    const shopId =
+      typeof bill.shopId === 'string'
+        ? bill.shopId
+        : bill.shopId && typeof bill.shopId === 'object' && '_id' in bill.shopId
+        ? String(bill.shopId._id)
+        : '';
+
+    setEditingBillId(bill._id);
+    setSelectedRouteId(routeId);
+    setSelectedShopId(shopId);
+    setQuantities(nextQuantities);
+    setModalVisible(true);
+  };
+
   const closeCreateModal = () => {
     setModalVisible(false);
+    setEditingBillId(null);
     setRoutePickerVisible(false);
     setShopPickerVisible(false);
   };
@@ -184,7 +267,7 @@ export default function BillsScreen() {
     }));
   };
 
-  const onCreateBill = async () => {
+  const onSaveBill = async () => {
     const items = products
       .map((product) => ({
         productId: product._id,
@@ -198,11 +281,14 @@ export default function BillsScreen() {
     }
 
     setSaving(true);
-    const result = await createBill({
+    const payload = {
       routeId: selectedRouteId,
       shopId: selectedShopId,
       items,
-    });
+    };
+    const result = editingBillId
+      ? await updateBillById(editingBillId, payload)
+      : await createBill(payload);
     setSaving(false);
 
     if (!result.ok) {
@@ -212,12 +298,43 @@ export default function BillsScreen() {
 
     closeCreateModal();
     await loadBills();
-    Alert.alert(t('bills_modal_title'), result.message);
+    Alert.alert(editingBillId ? 'Bill updated' : t('bills_modal_title'), result.message);
+  };
+
+  const onDeleteBill = (billId: string) => {
+    Alert.alert('Delete Bill', 'Are you sure you want to delete this bill?', [
+      { text: t('common_cancel'), style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await deleteBillById(billId);
+          if (!result.ok) {
+            Alert.alert(t('common_error'), result.message);
+            return;
+          }
+          await loadBills();
+        },
+      },
+    ]);
+  };
+
+  const openBillDetails = (bill: AppBill) => {
+    setDetailBill(bill);
+  };
+
+  const closeBillDetails = () => {
+    setDetailBill(null);
   };
 
   return (
     <SafeAreaView style={[styles.page, { paddingTop: insets.top + 8, paddingBottom: insets.bottom }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refreshScreen()} tintColor="#0F5D33" />
+        }>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>{t('bills_title')}</Text>
@@ -238,39 +355,79 @@ export default function BillsScreen() {
           </View>
         ) : (
           bills.map((bill) => (
-            <View key={bill._id} style={styles.billCard}>
+            <Pressable
+              key={bill._id}
+              style={({ pressed }) => [styles.billCard, pressed ? styles.billCardPressed : null]}
+              onPress={() => openBillDetails(bill)}>
               <View style={styles.billTopRow}>
-                <Text style={styles.billShop}>{getShopLabel(bill.shopId)}</Text>
-                <View style={styles.statusPill}>
-                  <Text style={styles.statusPillText}>{bill.status || t('bills_ordered')}</Text>
+                <View style={styles.billHeaderMain}>
+                  <Text style={styles.billShop}>{getShopLabel(bill.shopId)}</Text>
+                  <Text style={styles.billRoute}>{getRouteLabel(bill.routeId)}</Text>
+                </View>
+                <View style={styles.billHeaderSide}>
+                  <View style={styles.statusPill}>
+                    <Text style={styles.statusPillText}>{bill.status || t('bills_ordered')}</Text>
+                  </View>
                 </View>
               </View>
-              <Text style={styles.billRoute}>{getRouteLabel(bill.routeId)}</Text>
-              <Text style={styles.billMeta}>
-                {t('bills_items')}: {bill.items.length}
-              </Text>
-              <Text style={styles.billMeta}>
-                {t('bills_total')}: {asCurrency(bill.totalAmount)}
-              </Text>
-              <Text style={styles.billDate}>
-                {new Date(bill.createdAt).toLocaleString()}
-              </Text>
-            </View>
+              <View style={styles.billSummaryRow}>
+                <View style={styles.billInfoChip}>
+                  <Text style={styles.billInfoLabel}>{t('bills_items')}</Text>
+                  <Text style={styles.billInfoValue}>{bill.items.length}</Text>
+                </View>
+                <View style={[styles.billInfoChip, styles.billTotalChip]}>
+                  <Text style={styles.billInfoLabel}>{t('bills_total')}</Text>
+                  <Text style={[styles.billInfoValue, styles.billTotalValue]}>{asCurrency(bill.totalAmount)}</Text>
+                </View>
+              </View>
+              <View style={styles.billFooterRow}>
+                <Text style={styles.billDate}>
+                  {new Date(bill.createdAt).toLocaleString()}
+                </Text>
+                {bill.status === 'ordered' ? (
+                  <View style={styles.billActionRow}>
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        void openEditModal(bill);
+                      }}
+                      style={styles.billIconButton}>
+                      <Ionicons name="pencil" size={16} color="#0F5D33" />
+                    </Pressable>
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        onDeleteBill(bill._id);
+                      }}
+                      style={[styles.billIconButton, styles.deleteBillIconButton]}>
+                      <Ionicons name="trash-outline" size={16} color="#B73939" />
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
           ))
         )}
       </ScrollView>
 
       <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={closeCreateModal}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('bills_modal_title')}</Text>
+              <Text style={styles.modalTitle}>{editingBillId ? 'Edit Bill' : t('bills_modal_title')}</Text>
               <Pressable onPress={closeCreateModal}>
                 <Text style={styles.closeText}>{t('common_close')}</Text>
               </Pressable>
             </View>
 
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={[
+                styles.modalScrollContent,
+                { paddingBottom: 24 + Math.max(insets.bottom, 8) },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled">
               <Text style={styles.fieldLabel}>Route</Text>
               <Pressable onPress={() => setRoutePickerVisible(true)} style={styles.selectorInput}>
                 <Text style={selectedRouteId ? styles.selectorValue : styles.selectorPlaceholder}>
@@ -294,49 +451,54 @@ export default function BillsScreen() {
               </Pressable>
 
               <Text style={[styles.fieldLabel, styles.nextField]}>{t('bills_products_title')}</Text>
-
-              {products.map((product) => (
-                <View key={product._id} style={styles.productCard}>
-                  <View style={styles.productHeader}>
-                    <Text style={styles.productName}>{product.productName}</Text>
-                  </View>
-                  <View style={styles.productRow}>
-                    <View style={styles.readonlyRate}>
-                      <Text style={styles.readonlyLabel}>Unit Price</Text>
-                      <Text style={styles.readonlyValue}>{asCurrency(product.productRate)}</Text>
-                    </View>
-                    <View style={styles.quantityWrap}>
-                      <Text style={styles.readonlyLabel}>{t('bills_quantity')}</Text>
-                      <TextInput
-                        keyboardType="number-pad"
-                        placeholder="0"
-                        placeholderTextColor="#91A09B"
-                        style={styles.quantityInput}
-                        value={quantities[product._id] ?? ''}
-                        onChangeText={(value) => onQuantityChange(product._id, value)}
-                      />
-                    </View>
-                    <View style={styles.lineTotalWrap}>
-                      <Text style={styles.readonlyLabel}>Total</Text>
-                      <Text style={styles.lineTotalValue}>
-                        {asCurrency(product.productRate * Number(quantities[product._id] || 0))}
+              <View style={styles.productsList}>
+                {products.map((product) => (
+                  <View key={product._id} style={styles.productCard}>
+                    <View style={styles.productCardHeader}>
+                      <Text style={styles.productTitleLine} numberOfLines={2}>
+                        <Text style={styles.productMrpInline}>{Math.round(product.mrp)} </Text>
+                        <Text style={styles.productName}>{product.productName}</Text>
                       </Text>
                     </View>
+
+                    <View style={styles.productMetaRow}>
+                      <View style={styles.metaPill}>
+                        <Text style={styles.metaLabel}>Quantity</Text>
+                        <TextInput
+                          keyboardType="number-pad"
+                          placeholder="0"
+                          placeholderTextColor="#8BA099"
+                          style={styles.quantityInput}
+                          value={quantities[product._id] ?? ''}
+                          onChangeText={(value) => onQuantityChange(product._id, value)}
+                        />
+                      </View>
+                      <View style={styles.metaPill}>
+                        <Text style={styles.metaLabel}>Unit Price</Text>
+                        <Text style={styles.metaValue}>{asTableAmount(product.productRate)}</Text>
+                      </View>
+                      <View style={[styles.metaPill, styles.totalPill]}>
+                        <Text style={styles.metaLabel}>Total</Text>
+                        <Text style={[styles.metaValue, styles.totalPillValue]}>
+                          {asTableAmount(product.productRate * Number(quantities[product._id] || 0))}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              ))}
+                ))}
+              </View>
             </ScrollView>
 
-            <View style={styles.stickyFooter}>
+            <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 12) }]}>
               <View>
                 <Text style={styles.totalLabel}>{t('bills_total_sticky')}</Text>
                 <Text style={styles.totalValue}>{asCurrency(computedTotal)}</Text>
               </View>
-              <Pressable disabled={saving} onPress={onCreateBill} style={styles.createButton}>
+              <Pressable disabled={saving} onPress={onSaveBill} style={styles.createButton}>
                 {saving ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.createButtonText}>{t('bills_create')}</Text>
+                  <Text style={styles.createButtonText}>{editingBillId ? 'Update Bill' : t('bills_create')}</Text>
                 )}
               </Pressable>
             </View>
@@ -345,7 +507,9 @@ export default function BillsScreen() {
       </Modal>
 
       <Modal transparent visible={routePickerVisible} onRequestClose={() => setRoutePickerVisible(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setRoutePickerVisible(false)}>
+        <Pressable
+          style={[styles.pickerBackdrop, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onPress={() => setRoutePickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
             <Text style={styles.pickerTitle}>{t('bills_route_picker_title')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -361,7 +525,9 @@ export default function BillsScreen() {
       </Modal>
 
       <Modal transparent visible={shopPickerVisible} onRequestClose={() => setShopPickerVisible(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setShopPickerVisible(false)}>
+        <Pressable
+          style={[styles.pickerBackdrop, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onPress={() => setShopPickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
             <Text style={styles.pickerTitle}>{t('bills_shop_picker_title')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -381,6 +547,73 @@ export default function BillsScreen() {
                 <Text style={styles.emptyPickerText}>No shops found for this route.</Text>
               ) : null}
             </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={Boolean(detailBill)} onRequestClose={closeBillDetails} animationType="fade">
+        <Pressable
+          style={[styles.detailBackdrop, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) }]}
+          onPress={closeBillDetails}>
+          <Pressable style={styles.detailCard} onPress={() => {}}>
+            {detailBill ? (
+              <>
+                <View style={styles.detailHeader}>
+                  <View style={styles.detailHeaderCopy}>
+                    <Text style={styles.detailTitle}>{getShopLabel(detailBill.shopId)}</Text>
+                    <Text style={styles.detailSubtitle}>{getRouteLabel(detailBill.routeId)}</Text>
+                  </View>
+                  <Pressable onPress={closeBillDetails} style={styles.detailCloseButton}>
+                    <Ionicons name="close" size={18} color="#355246" />
+                  </Pressable>
+                </View>
+
+                <View style={styles.detailMetaRow}>
+                  <View style={styles.detailMetaChip}>
+                    <Text style={styles.detailMetaLabel}>{t('bills_status')}</Text>
+                    <Text style={styles.detailMetaValue}>{detailBill.status || t('bills_ordered')}</Text>
+                  </View>
+                  <View style={styles.detailMetaChip}>
+                    <Text style={styles.detailMetaLabel}>{t('bills_total')}</Text>
+                    <Text style={[styles.detailMetaValue, styles.detailMetaValueTotal]}>{asCurrency(detailBill.totalAmount)}</Text>
+                  </View>
+                </View>
+
+                <ScrollView style={styles.detailList} showsVerticalScrollIndicator={false}>
+                  {detailBill.items.map((item, index) => {
+                    const itemMrp = getBillItemMrp(item);
+
+                    return (
+                      <View key={`${getBillItemProductId(item)}-${index}`} style={styles.detailItemCard}>
+                        <Text style={styles.detailItemName}>{item.productName}</Text>
+                        <View style={styles.detailItemRow}>
+                          {itemMrp !== null ? (
+                            <View style={styles.detailItemStat}>
+                              <Text style={styles.detailItemLabel}>MRP</Text>
+                              <Text style={styles.detailItemValue}>{asCurrency(itemMrp)}</Text>
+                            </View>
+                          ) : null}
+                          <View style={styles.detailItemStat}>
+                            <Text style={styles.detailItemLabel}>{t('bills_quantity')}</Text>
+                            <Text style={styles.detailItemValue}>{item.quantity}</Text>
+                          </View>
+                          <View style={styles.detailItemStat}>
+                            <Text style={styles.detailItemLabel}>Unit Price</Text>
+                            <Text style={styles.detailItemValue}>{asCurrency(item.productRate)}</Text>
+                          </View>
+                          <View style={styles.detailItemStat}>
+                            <Text style={styles.detailItemLabel}>Total</Text>
+                            <Text style={[styles.detailItemValue, styles.detailItemTotal]}>{asCurrency(item.total)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text style={styles.detailDate}>{new Date(detailBill.createdAt).toLocaleString()}</Text>
+              </>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>
@@ -448,55 +681,243 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   billCard: {
-    marginTop: 16,
+    marginTop: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 18,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#DFEAE4',
     shadowColor: '#123524',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  billCardPressed: {
+    opacity: 0.96,
   },
   billTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    alignItems: 'center',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  billHeaderMain: {
+    flex: 1,
+    gap: 4,
+  },
+  billHeaderSide: {
+    alignItems: 'flex-end',
+    gap: 8,
   },
   billShop: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#133426',
   },
   statusPill: {
     backgroundColor: '#E7F6EE',
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   statusPillText: {
     color: '#0F6B42',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'capitalize',
   },
   billRoute: {
-    marginTop: 8,
     color: '#496158',
-    fontSize: 14,
+    fontSize: 13,
   },
-  billMeta: {
-    marginTop: 6,
-    color: '#2D3F39',
-    fontSize: 14,
-    fontWeight: '600',
+  billSummaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  billInfoChip: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E3ECE7',
+    backgroundColor: '#F7FBF9',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  billTotalChip: {
+    backgroundColor: '#EEF8F2',
+    borderColor: '#D6E8DC',
+  },
+  billInfoLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#72837C',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  billInfoValue: {
+    marginTop: 4,
+    color: '#1D342A',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  billTotalValue: {
+    color: '#0E6B43',
   },
   billDate: {
+    color: '#748680',
+    fontSize: 12,
+  },
+  billFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
     marginTop: 10,
+  },
+  billActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 'auto',
+  },
+  billIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#E8F6EE',
+    borderWidth: 1,
+    borderColor: '#B9DDC7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBillIconButton: {
+    backgroundColor: '#FDECEC',
+    borderColor: '#F2B8B8',
+  },
+  detailBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 20, 15, 0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  detailCard: {
+    width: '100%',
+    maxHeight: '84%',
+    backgroundColor: '#F9FCFB',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#DCE7E2',
+    padding: 18,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  detailHeaderCopy: {
+    flex: 1,
+  },
+  detailTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#123528',
+  },
+  detailSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#5C7269',
+  },
+  detailCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#EEF4F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailMetaRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  detailMetaChip: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCE7E2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  detailMetaLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6F837B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  detailMetaValue: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#173126',
+    textTransform: 'capitalize',
+  },
+  detailMetaValueTotal: {
+    color: '#0E6B43',
+  },
+  detailList: {
+    marginTop: 16,
+  },
+  detailItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E1EBE6',
+    padding: 14,
+    marginBottom: 10,
+  },
+  detailItemName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#123528',
+  },
+  detailItemRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  detailItemStat: {
+    flexGrow: 1,
+    minWidth: '22%',
+    borderRadius: 14,
+    backgroundColor: '#F5F9F7',
+    borderWidth: 1,
+    borderColor: '#E2ECE7',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  detailItemLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#72837C',
+    textTransform: 'uppercase',
+  },
+  detailItemValue: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#173126',
+  },
+  detailItemTotal: {
+    color: '#0E6B43',
+  },
+  detailDate: {
+    marginTop: 6,
     color: '#748680',
     fontSize: 12,
   },
@@ -504,15 +925,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(7, 20, 15, 0.48)',
     justifyContent: 'flex-end',
+    paddingTop: Platform.OS === 'android' ? 12 : 20,
   },
   modalCard: {
-    height: '88%',
+    width: '100%',
+    height: '90%',
     backgroundColor: '#F9FCFB',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 16,
-    paddingBottom: 18,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -534,7 +957,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalScrollContent: {
-    paddingBottom: 24,
+    paddingTop: 2,
+    flexGrow: 1,
   },
   fieldLabel: {
     fontSize: 14,
@@ -564,71 +988,77 @@ const styles = StyleSheet.create({
     color: '#83938D',
     fontSize: 15,
   },
+  productsList: {
+    gap: 12,
+  },
   productCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#DDE8E3',
     padding: 14,
+  },
+  productCardHeader: {
     marginBottom: 12,
   },
-  productHeader: {
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  productName: {
-    flex: 1,
-    fontSize: 16,
+  productTitleLine: {
+    fontSize: 17,
     fontWeight: '800',
-    color: '#0F2E23',
+    color: '#103728',
   },
-  productRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-    alignItems: 'flex-end',
-  },
-  readonlyRate: {
-    flex: 1,
-    backgroundColor: '#F4F8F6',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#D9E4DF',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  readonlyLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7C76',
-    marginBottom: 4,
-  },
-  readonlyValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#19352B',
-  },
-  quantityWrap: {
-    width: 104,
-  },
-  lineTotalWrap: {
-    minWidth: 92,
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    paddingBottom: 10,
-  },
-  lineTotalValue: {
-    fontSize: 16,
+  productMrpInline: {
+    fontSize: 17,
     fontWeight: '800',
     color: '#0E6B43',
   },
+  productName: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#103728',
+  },
+  productMetaRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  metaPill: {
+    flex: 1,
+    minHeight: 88,
+    borderRadius: 16,
+    backgroundColor: '#F5F9F7',
+    borderWidth: 1,
+    borderColor: '#DDE8E3',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  totalPill: {
+    backgroundColor: '#EEF8F2',
+    borderColor: '#CDE3D4',
+  },
+  metaLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6A7C74',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  metaValue: {
+    marginTop: 6,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#173126',
+  },
+  totalPillValue: {
+    color: '#0E6B43',
+  },
   quantityInput: {
-    height: 52,
+    height: 50,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D3E0DA',
-    paddingHorizontal: 12,
+    borderColor: '#CFE0D8',
+    paddingHorizontal: 14,
     color: '#0F201A',
     fontSize: 16,
     fontWeight: '700',
@@ -638,6 +1068,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#DCE7E2',
     paddingTop: 14,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -672,13 +1103,14 @@ const styles = StyleSheet.create({
   pickerBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(7, 20, 15, 0.4)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingTop: Platform.OS === 'android' ? 12 : 20,
     paddingHorizontal: 18,
   },
   pickerCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    maxHeight: '70%',
+    maxHeight: '62%',
     padding: 18,
   },
   pickerTitle: {

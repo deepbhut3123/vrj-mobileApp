@@ -109,6 +109,9 @@ export default function LoginScreen() {
 
           {isVerificationStep ? (
             <>
+              <Text style={styles.verificationHelper}>
+                {t("auth_verification_helper")}
+              </Text>
               <TextInput
                 keyboardType="number-pad"
                 onChangeText={setVerificationCode}
@@ -282,6 +285,14 @@ const styles = StyleSheet.create({
   },
   verificationButton: {
     marginTop: 14,
+  },
+  verificationHelper: {
+    marginTop: 8,
+    marginBottom: 12,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#52645E",
+    textAlign: "center",
   },
   primaryButton: {
     backgroundColor: "#0F5D33",
