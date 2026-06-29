@@ -21,7 +21,7 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
-  roleId: 2;
+  roleId: number;
   isActive?: boolean;
 };
 
@@ -32,6 +32,33 @@ export type AppRoute = {
   cityName: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminUser = {
+  _id: string;
+  name: string;
+  email: string;
+  roleId: 1 | 2 | 3;
+  isActive?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppDealer = {
+  _id: string;
+  dealerName: string;
+  contactNo?: string;
+  city?: string;
+  margin?: number;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  userId?: {
+    _id?: string;
+    name?: string;
+    email?: string;
+    roleId?: number;
+  };
 };
 
 export type AppShop = {
@@ -53,11 +80,22 @@ export type AppShop = {
 
 export type AppProduct = {
   _id: string;
+  sequence?: number;
   productName: string;
   mrp: number;
   productRate: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DealerProduct = {
+  _id: string;
+  sequence?: number;
+  productName: string;
+  mrp: number;
+  productRate: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AppBillItem = {
@@ -71,13 +109,49 @@ export type AppBillItem = {
 
 export type AppBill = {
   _id: string;
+  userId?: string | AuthUser;
+  deliveryManId?: string | AuthUser | null;
   routeId: string | AppRoute;
   shopId: string | AppShop;
   items: AppBillItem[];
   totalAmount: number;
-  status: "ordered" | "processing" | "delivered" | "cancelled";
+  status: "ordered" | "processing" | "completed" | "shipped" | "delivered" | "cancelled";
   createdAt: string;
   updatedAt: string;
+};
+
+export type DealerBillItem = {
+  productId?: string | AppProduct | null;
+  mrp?: number;
+  productName?: string;
+  productRate?: number;
+  amount?: number;
+  quantity?: number;
+  total?: number;
+};
+
+export type DealerBill = {
+  _id: string;
+  billDate: string;
+  kattaCount: number;
+  totalAmount: number;
+  items?: DealerBillItem[];
+  dealerId?: {
+    _id?: string;
+    dealerName?: string;
+    contactNo?: string;
+    city?: string;
+    margin?: number;
+  };
+  userId?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+    email?: string;
+    roleId?: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type UploadImageFile = {
@@ -103,6 +177,25 @@ export const setCurrentUser = (user: AuthUser | null) => {
 
 export const getCurrentUser = () => currentUser;
 export const isAuthHydrated = () => authHydrated;
+
+export const getRoleLabel = (roleId?: number | null) => {
+  switch (Number(roleId)) {
+    case 1:
+      return "Admin";
+    case 2:
+      return "Retailer";
+    case 3:
+      return "Dealer";
+    case 4:
+      return "Salesman";
+    case 5:
+      return "Staff";
+    case 6:
+      return "Delivery Man";
+    default:
+      return "User";
+  }
+};
 
 const persistAuthSession = async (payload: {
   token: string;
@@ -143,7 +236,7 @@ export const hydrateAuthSession = async () => {
       !("name" in user) ||
       !("email" in user) ||
       !("roleId" in user) ||
-      Number(user.roleId) !== 2
+      Number.isNaN(Number(user.roleId))
     ) {
       clearAuthToken();
       authHydrated = true;
@@ -155,7 +248,7 @@ export const hydrateAuthSession = async () => {
       id: String(user.id),
       name: String(user.name),
       email: String(user.email),
-      roleId: 2,
+      roleId: Number(user.roleId),
     };
   } catch {
     clearAuthToken();
@@ -461,7 +554,7 @@ export const registerUser = async (data: {
   }
 };
 
-const extractRoleTwoUser = (payload: unknown): AuthUser | null => {
+const extractAllowedUser = (payload: unknown): AuthUser | null => {
   const userData =
     typeof payload === "object" &&
     payload !== null &&
@@ -491,7 +584,7 @@ const extractRoleTwoUser = (payload: unknown): AuthUser | null => {
   const emailRaw = "email" in userData ? (userData as { email?: unknown }).email : undefined;
   const roleId = Number(roleRaw);
 
-  if (roleId !== 2) {
+  if (Number.isNaN(roleId)) {
     return null;
   }
 
@@ -502,12 +595,12 @@ const extractRoleTwoUser = (payload: unknown): AuthUser | null => {
     id: String(idRaw ?? ""),
     name: String(nameRaw ?? ""),
     email: String(emailRaw ?? ""),
-    roleId: 2,
+    roleId,
     isActive: isActiveRaw !== false,
   };
 };
 
-const finalizeRoleTwoSession = async (payload: LoginResponse) => {
+const finalizeAllowedSession = async (payload: LoginResponse) => {
   const token = typeof payload.token === "string" ? payload.token : "";
   if (!token) {
     return {
@@ -518,14 +611,14 @@ const finalizeRoleTwoSession = async (payload: LoginResponse) => {
     } satisfies ApiResult<LoginResponse>;
   }
 
-  const user = extractRoleTwoUser(payload);
+  const user = extractAllowedUser(payload);
   if (!user) {
     clearAuthToken();
     return {
       ok: false,
       status: 403,
       data: payload,
-      message: "This mobile app is available only for role 2 accounts.",
+      message: "Login response did not include a valid user.",
     } satisfies ApiResult<LoginResponse>;
   }
 
@@ -558,7 +651,7 @@ export const loginuser = async (data: { email: string; password: string }) => {
       return asApiResult<LoginResponse>(response.status, response.data);
     }
 
-    const finalized = await finalizeRoleTwoSession(response.data ?? {});
+    const finalized = await finalizeAllowedSession(response.data ?? {});
     if (!finalized.ok) {
       return finalized;
     }
@@ -579,7 +672,7 @@ export const verifyLoginCode = async (verificationToken: string, code: string) =
     setCurrentUser(null);
     clearAuthToken();
 
-    const finalized = await finalizeRoleTwoSession(response.data ?? {});
+    const finalized = await finalizeAllowedSession(response.data ?? {});
     if (!finalized.ok) {
       return finalized;
     }
@@ -634,7 +727,7 @@ export const login = async (email: string, password: string) =>
 
 export const createRoute = async (routeName: string, cityName: string) => {
   try {
-    const response = await API.post("/api/admin/routes", { routeName, cityName });
+    const response = await API.post("/api/admin/retailer/routes", { routeName, cityName });
     return asApiResult<{ data: AppRoute }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create route.");
@@ -643,10 +736,37 @@ export const createRoute = async (routeName: string, cityName: string) => {
 
 export const getMyRoutes = async () => {
   try {
-    const response = await API.get("/api/admin/routes");
+    const response = await API.get("/api/admin/retailer/routes");
     return asApiResult<{ data: AppRoute[] }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to fetch routes.");
+  }
+};
+
+export const getAllAdminRoutes = async () => {
+  try {
+    const response = await API.get("/api/admin/retailer/routes/all");
+    return asApiResult<{ data: AppRoute[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch admin routes.");
+  }
+};
+
+export const getAllUsers = async () => {
+  try {
+    const response = await API.get("/api/admin/users");
+    return asApiResult<{ data: AdminUser[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch users.");
+  }
+};
+
+export const getAllDealers = async () => {
+  try {
+    const response = await API.get("/api/admin/dealer/dealers");
+    return asApiResult<{ data: AppDealer[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch dealers.");
   }
 };
 
@@ -695,11 +815,11 @@ export const createShop = async (data: {
         type: mimeType,
       } as unknown as Blob);
 
-      const result = await executeShopMultipartRequest("POST", "/api/admin/shops", formData);
+      const result = await executeShopMultipartRequest("POST", "/api/admin/retailer/shops", formData);
       return result as ApiResult<{ data: AppShop }>;
     }
 
-    const response = await API.post("/api/admin/shops", {
+    const response = await API.post("/api/admin/retailer/shops", {
       routeId: data.routeId,
       shopName: data.shopName,
       shopAddress: data.shopAddress,
@@ -716,16 +836,25 @@ export const createShop = async (data: {
 
 export const getMyShops = async () => {
   try {
-    const response = await API.get("/api/admin/shops/my-shops");
+    const response = await API.get("/api/admin/retailer/shops/my-shops");
     return asApiResult<{ data: AppShop[] }>(response.status, response.data);
   } catch (error) {
     return asShopApiError(error, "Unable to fetch your shops.");
   }
 };
 
+export const getAllAdminShops = async () => {
+  try {
+    const response = await API.get("/api/admin/retailer/shops");
+    return asApiResult<{ data: AppShop[] }>(response.status, response.data);
+  } catch (error) {
+    return asShopApiError(error, "Unable to fetch admin shops.");
+  }
+};
+
 export const getShopRoutes = async () => {
   try {
-    const response = await API.get("/api/admin/shops/routes");
+    const response = await API.get("/api/admin/retailer/shops/routes");
     return asApiResult<{ data: AppRoute[] }>(response.status, response.data);
   } catch (error) {
     return asShopApiError(error, "Unable to fetch routes.");
@@ -780,11 +909,11 @@ export const updateShopById = async (
         type: mimeType,
       } as unknown as Blob);
 
-      const result = await executeShopMultipartRequest("PUT", `/api/admin/shops/${id}`, formData);
+      const result = await executeShopMultipartRequest("PUT", `/api/admin/retailer/shops/${id}`, formData);
       return result as ApiResult<{ data: AppShop }>;
     }
 
-    const response = await API.put(`/api/admin/shops/${id}`, {
+    const response = await API.put(`/api/admin/retailer/shops/${id}`, {
       routeId: data.routeId,
       shopName: data.shopName,
       shopAddress: data.shopAddress,
@@ -801,7 +930,7 @@ export const updateShopById = async (
 
 export const deleteShopById = async (id: string) => {
   try {
-    const response = await API.delete(`/api/admin/shops/${id}`);
+    const response = await API.delete(`/api/admin/retailer/shops/${id}`);
     return asApiResult(response.status, response.data);
   } catch (error) {
     return asShopApiError(error, "Unable to delete shop.");
@@ -810,19 +939,55 @@ export const deleteShopById = async (id: string) => {
 
 export const getBillProducts = async () => {
   try {
-    const response = await API.get("/api/admin/products/catalog");
+    const response = await API.get("/api/admin/retailer/products/catalog");
     return asApiResult<{ data: AppProduct[] }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to fetch products.");
   }
 };
 
+export const getAllRetailerProducts = async () => {
+  try {
+    const response = await API.get("/api/admin/retailer/products");
+    return asApiResult<{ data: AppProduct[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch admin products.");
+  }
+};
+
 export const getMyBills = async () => {
   try {
-    const response = await API.get("/api/admin/bills/my-bills");
+    const response = await API.get("/api/admin/retailer/bills/my-bills");
     return asApiResult<{ data: AppBill[] }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to fetch bills.");
+  }
+};
+
+export const getAllRetailerBills = async () => {
+  try {
+    const response = await API.get("/api/admin/retailer/bills/all");
+    return asApiResult<{ data: AppBill[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch retailer bills.");
+  }
+};
+
+export const markRetailerBillsAsCompleted = async (billIds: string[]) => {
+  try {
+    const response = await API.patch("/api/admin/retailer/bills/complete", { billIds });
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to mark bills as completed.");
+  }
+};
+
+export const getAllDealerBills = async () => {
+  try {
+    const response = await API.get("/api/admin/dealer/bills");
+    return asApiResult<{ data: DealerBill[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch dealer bills.");
   }
 };
 
@@ -835,10 +1000,26 @@ export const createBill = async (data: {
   }>;
 }) => {
   try {
-    const response = await API.post("/api/admin/bills", data);
+    const response = await API.post("/api/admin/retailer/bills", data);
     return asApiResult<{ data: AppBill }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create bill.");
+  }
+};
+
+export const createAdminRetailerBill = async (data: {
+  routeId: string;
+  shopId: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+  }>;
+}) => {
+  try {
+    const response = await API.post("/api/admin/retailer/bills", data);
+    return asApiResult<{ data: AppBill }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to create retailer bill.");
   }
 };
 
@@ -854,7 +1035,7 @@ export const updateBillById = async (
   }
 ) => {
   try {
-    const response = await API.put(`/api/admin/bills/${id}`, data);
+    const response = await API.put(`/api/admin/retailer/bills/${id}`, data);
     return asApiResult<{ data: AppBill }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to update bill.");
@@ -863,10 +1044,40 @@ export const updateBillById = async (
 
 export const deleteBillById = async (id: string) => {
   try {
-    const response = await API.delete(`/api/admin/bills/${id}`);
+    const response = await API.delete(`/api/admin/retailer/bills/${id}`);
     return asApiResult(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to delete bill.");
+  }
+};
+
+export const getAllDealerProducts = async () => {
+  try {
+    const response = await API.get("/api/admin/dealer/products");
+    return asApiResult<{ data: DealerProduct[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch dealer products.");
+  }
+};
+
+export const createAdminDealerBill = async (data: {
+  dealerId: string;
+  billDate: string;
+  kattaCount: number;
+  items: Array<{
+    productId?: string;
+    productName?: string;
+    mrp?: number;
+    productRate?: number;
+    amount?: number;
+    quantity: number;
+  }>;
+}) => {
+  try {
+    const response = await API.post("/api/admin/dealer/bills", data);
+    return asApiResult<{ data: DealerBill }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to create dealer bill.");
   }
 };
 

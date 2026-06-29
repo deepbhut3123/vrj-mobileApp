@@ -14,6 +14,8 @@ type TranslationKey =
   | "tabs_home"
   | "tabs_shop"
   | "tabs_bill"
+  | "tabs_retailer_bills"
+  | "tabs_dealer_bills"
   | "tabs_route"
   | "tabs_settings"
   | "common_cancel"
@@ -89,6 +91,9 @@ type TranslationKey =
   | "home_welcome_message"
   | "home_stats_user_title"
   | "home_stats_my_shops"
+  | "home_stats_delivery_title"
+  | "home_stats_pending_delivery"
+  | "home_stats_delivery_complete"
   | "profile_title"
   | "profile_subtitle"
   | "profile_role"
@@ -164,6 +169,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_home: "Home",
     tabs_shop: "Shop",
     tabs_bill: "Bills",
+    tabs_retailer_bills: "Retailer Bills",
+    tabs_dealer_bills: "Dealer Bills",
     tabs_route: "Route",
     tabs_settings: "Settings",
     common_cancel: "Cancel",
@@ -242,6 +249,9 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_welcome_message: "Hi {{name}}, your workspace is ready for today.",
     home_stats_user_title: "Your Shop Summary",
     home_stats_my_shops: "My Shops",
+    home_stats_delivery_title: "Your Delivery Summary",
+    home_stats_pending_delivery: "Pending for Delivery",
+    home_stats_delivery_complete: "Delivery Complete",
     profile_title: "Profile",
     profile_subtitle: "Manage your account",
     profile_role: "Role",
@@ -321,6 +331,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_home: "હોમ",
     tabs_shop: "દુકાન",
     tabs_bill: "બિલ",
+    tabs_retailer_bills: "રિટેલર બિલ",
+    tabs_dealer_bills: "ડીલર બિલ",
     tabs_route: "રૂટ",
     tabs_settings: "સેટિંગ્સ",
     common_cancel: "રદ કરો",
@@ -399,6 +411,9 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_welcome_message: "હાય {{name}}, આજે માટે તમારું વર્કસ્પેસ તૈયાર છે.",
     home_stats_user_title: "તમારી દુકાન સારાંશ",
     home_stats_my_shops: "મારી દુકાનો",
+    home_stats_delivery_title: "તમારો ડિલિવરી સારાંશ",
+    home_stats_pending_delivery: "ડિલિવરી માટે બાકી",
+    home_stats_delivery_complete: "ડિલિવરી પૂર્ણ",
     profile_title: "પ્રોફાઇલ",
     profile_subtitle: "તમારું એકાઉન્ટ મેનેજ કરો",
     profile_role: "ભૂમિકા",

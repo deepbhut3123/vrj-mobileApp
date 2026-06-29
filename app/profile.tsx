@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/constants/i18n';
-import { clearAuthToken, getCurrentUser } from '@/services/api';
+import { clearAuthToken, getCurrentUser, getRoleLabel } from '@/services/api';
 
 export default function ProfileScreen() {
   const { t } = useI18n();
@@ -26,7 +26,7 @@ export default function ProfileScreen() {
           <Text style={styles.label}>{t('home_email')}</Text>
           <Text style={styles.value}>{user?.email ?? '-'}</Text>
           <Text style={styles.label}>{t('profile_role')}</Text>
-          <Text style={styles.value}>{t('profile_user')}</Text>
+          <Text style={styles.value}>{getRoleLabel(user?.roleId)}</Text>
         </View>
 
         <Pressable onPress={onLogout} style={styles.button}>

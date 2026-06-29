@@ -80,6 +80,20 @@ const extractList = <T,>(payload: unknown): T[] => {
   return [];
 };
 
+const sortProductsBySequence = (list: AppProduct[]) =>
+  [...list].sort((left, right) => {
+    const leftSequence = Number(left.sequence);
+    const rightSequence = Number(right.sequence);
+    const normalizedLeftSequence = Number.isFinite(leftSequence) ? leftSequence : Number.MAX_SAFE_INTEGER;
+    const normalizedRightSequence = Number.isFinite(rightSequence) ? rightSequence : Number.MAX_SAFE_INTEGER;
+
+    if (normalizedLeftSequence !== normalizedRightSequence) {
+      return normalizedLeftSequence - normalizedRightSequence;
+    }
+
+    return left.productName.localeCompare(right.productName);
+  });
+
 export default function BillsScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
@@ -172,7 +186,7 @@ export default function BillsScreen() {
 
     setRoutes(extractList<AppRoute>(routesResult.data));
     setShops(extractList<AppShop>(shopsResult.data));
-    setProducts(extractList<AppProduct>(productsResult.data));
+    setProducts(sortProductsBySequence(extractList<AppProduct>(productsResult.data)));
     return true;
   }, [t]);
 
