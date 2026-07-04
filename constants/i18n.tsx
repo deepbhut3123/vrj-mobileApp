@@ -16,8 +16,63 @@ type TranslationKey =
   | "tabs_bill"
   | "tabs_retailer_bills"
   | "tabs_dealer_bills"
+  | "tabs_attendance"
   | "tabs_route"
   | "tabs_settings"
+  | "dealer_bills_title"
+  | "dealer_bills_subtitle"
+  | "dealer_bills_add"
+  | "dealer_bills_empty"
+  | "dealer_bills_unknown_dealer"
+  | "dealer_bills_unknown_city"
+  | "dealer_bills_katta"
+  | "dealer_bills_created_by"
+  | "dealer_bills_unknown_user"
+  | "dealer_bills_total"
+  | "dealer_bills_new_title"
+  | "dealer_bills_close"
+  | "dealer_bills_field_dealer"
+  | "dealer_bills_select_dealer"
+  | "dealer_bills_field_date"
+  | "dealer_bills_field_katta"
+  | "dealer_bills_field_products"
+  | "dealer_bills_rate"
+  | "dealer_bills_bill_total"
+  | "dealer_bills_create"
+  | "dealer_bills_choose_dealer"
+  | "dealer_bills_validation_message"
+  | "dealer_bills_validation_dealer"
+  | "dealer_bills_validation_date"
+  | "dealer_bills_validation_katta"
+  | "dealer_bills_validation_products"
+  | "dealer_bills_load_error"
+  | "dealer_bills_create_error"
+  | "dealer_bills_alert_title"
+  | "dealer_bills_detail_qty"
+  | "dealer_bills_detail_mrp"
+  | "dealer_bills_detail_amount"
+  | "attendance_title"
+  | "attendance_subtitle"
+  | "attendance_today_in"
+  | "attendance_today_out"
+  | "attendance_in_button"
+  | "attendance_out_button"
+  | "attendance_daywise_title"
+  | "attendance_daywise_subtitle"
+  | "attendance_empty_title"
+  | "attendance_empty_message"
+  | "attendance_access_title"
+  | "attendance_access_message"
+  | "attendance_in_time"
+  | "attendance_out_time"
+  | "attendance_status_present"
+  | "attendance_filter_title"
+  | "attendance_filter_month"
+  | "attendance_filter_year"
+  | "attendance_empty_filtered"
+  | "attendance_alert_title"
+  | "attendance_checkin_success"
+  | "attendance_checkout_success"
   | "common_cancel"
   | "common_save"
   | "common_close"
@@ -91,6 +146,8 @@ type TranslationKey =
   | "home_welcome_message"
   | "home_stats_user_title"
   | "home_stats_my_shops"
+  | "home_stats_staff_title"
+  | "home_stats_attendance_days"
   | "home_stats_delivery_title"
   | "home_stats_pending_delivery"
   | "home_stats_delivery_complete"
@@ -171,8 +228,63 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_bill: "Bills",
     tabs_retailer_bills: "Retailer Bills",
     tabs_dealer_bills: "Dealer Bills",
+    tabs_attendance: "Attendance",
     tabs_route: "Route",
     tabs_settings: "Settings",
+    dealer_bills_title: "Dealer Bills",
+    dealer_bills_subtitle: "Review dealer bills, katta count, and item totals.",
+    dealer_bills_add: "Add Bill",
+    dealer_bills_empty: "No dealer bills found.",
+    dealer_bills_unknown_dealer: "Unknown dealer",
+    dealer_bills_unknown_city: "Unknown city",
+    dealer_bills_katta: "Katta",
+    dealer_bills_created_by: "Created by {{name}}",
+    dealer_bills_unknown_user: "Unknown user",
+    dealer_bills_total: "Total",
+    dealer_bills_new_title: "New Dealer Bill",
+    dealer_bills_close: "Close",
+    dealer_bills_field_dealer: "Dealer",
+    dealer_bills_select_dealer: "Select dealer",
+    dealer_bills_field_date: "Bill Date",
+    dealer_bills_field_katta: "Katta Count",
+    dealer_bills_field_products: "Products",
+    dealer_bills_rate: "Rate",
+    dealer_bills_bill_total: "Bill Total",
+    dealer_bills_create: "Create Bill",
+    dealer_bills_choose_dealer: "Choose Dealer",
+    dealer_bills_validation_message: "Select dealer, date, katta count above 0, and at least one product quantity.",
+    dealer_bills_validation_dealer: "Please select a dealer.",
+    dealer_bills_validation_date: "Please enter the bill date.",
+    dealer_bills_validation_katta: "Please enter katta count above 0.",
+    dealer_bills_validation_products: "Please enter quantity for at least one product.",
+    dealer_bills_load_error: "Unable to load dealer bill form",
+    dealer_bills_create_error: "Unable to create dealer bill",
+    dealer_bills_alert_title: "Dealer Bill",
+    dealer_bills_detail_qty: "Qty",
+    dealer_bills_detail_mrp: "MRP",
+    dealer_bills_detail_amount: "Amount",
+    attendance_title: "Attendance",
+    attendance_subtitle: "Mark your check-in and check-out, then review your day-wise attendance below.",
+    attendance_today_in: "Today In",
+    attendance_today_out: "Today Out",
+    attendance_in_button: "In",
+    attendance_out_button: "Out",
+    attendance_daywise_title: "Day-wise Attendance",
+    attendance_daywise_subtitle: "Pull down to refresh after marking attendance.",
+    attendance_empty_title: "No attendance records yet.",
+    attendance_empty_message: "Use the buttons above to create your first attendance entry.",
+    attendance_access_title: "Attendance Access",
+    attendance_access_message: "This tab is available for staff users only. Current role: {{role}}.",
+    attendance_in_time: "In Time",
+    attendance_out_time: "Out Time",
+    attendance_status_present: "Present",
+    attendance_filter_title: "Month Filter",
+    attendance_filter_month: "Month",
+    attendance_filter_year: "Year",
+    attendance_empty_filtered: "No attendance records for this month.",
+    attendance_alert_title: "Attendance",
+    attendance_checkin_success: "Check-in marked successfully.",
+    attendance_checkout_success: "Check-out marked successfully.",
     common_cancel: "Cancel",
     common_save: "Save",
     common_close: "Close",
@@ -249,6 +361,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_welcome_message: "Hi {{name}}, your workspace is ready for today.",
     home_stats_user_title: "Your Shop Summary",
     home_stats_my_shops: "My Shops",
+    home_stats_staff_title: "Your Attendance Summary",
+    home_stats_attendance_days: "Attendance Days",
     home_stats_delivery_title: "Your Delivery Summary",
     home_stats_pending_delivery: "Pending for Delivery",
     home_stats_delivery_complete: "Delivery Complete",
@@ -333,8 +447,63 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_bill: "બિલ",
     tabs_retailer_bills: "રિટેલર બિલ",
     tabs_dealer_bills: "ડીલર બિલ",
+    tabs_attendance: "હાજરી",
     tabs_route: "રૂટ",
     tabs_settings: "સેટિંગ્સ",
+    dealer_bills_title: "ડીલર બિલ",
+    dealer_bills_subtitle: "ડીલર બિલ, કટ્ટા ગણતરી અને આઇટમ કુલ જુઓ.",
+    dealer_bills_add: "બિલ ઉમેરો",
+    dealer_bills_empty: "કોઈ ડીલર બિલ મળ્યા નથી.",
+    dealer_bills_unknown_dealer: "અજાણ્યો ડીલર",
+    dealer_bills_unknown_city: "અજાણ્યું શહેર",
+    dealer_bills_katta: "કટ્ટા",
+    dealer_bills_created_by: "{{name}} દ્વારા બનાવ્યું",
+    dealer_bills_unknown_user: "અજાણ્યો યુઝર",
+    dealer_bills_total: "કુલ",
+    dealer_bills_new_title: "નવું ડીલર બિલ",
+    dealer_bills_close: "બંધ કરો",
+    dealer_bills_field_dealer: "ડીલર",
+    dealer_bills_select_dealer: "ડીલર પસંદ કરો",
+    dealer_bills_field_date: "બિલ તારીખ",
+    dealer_bills_field_katta: "કટ્ટા ગણતરી",
+    dealer_bills_field_products: "પ્રોડક્ટ્સ",
+    dealer_bills_rate: "દર",
+    dealer_bills_bill_total: "બિલ કુલ",
+    dealer_bills_create: "બિલ બનાવો",
+    dealer_bills_choose_dealer: "ડીલર પસંદ કરો",
+    dealer_bills_validation_message: "ડીલર, તારીખ, 0 કરતાં વધુ કટ્ટા ગણતરી અને ઓછામાં ઓછી એક પ્રોડક્ટ જથ્થો પસંદ કરો.",
+    dealer_bills_validation_dealer: "કૃપા કરીને ડીલર પસંદ કરો.",
+    dealer_bills_validation_date: "કૃપા કરીને બિલ તારીખ દાખલ કરો.",
+    dealer_bills_validation_katta: "કૃપા કરીને 0 કરતાં વધુ કટ્ટા ગણતરી દાખલ કરો.",
+    dealer_bills_validation_products: "કૃપા કરીને ઓછામાં ઓછી એક પ્રોડક્ટ માટે જથ્થો દાખલ કરો.",
+    dealer_bills_load_error: "ડીલર બિલ ફોર્મ લોડ થઈ શક્યું નથી",
+    dealer_bills_create_error: "ડીલર બિલ બનાવી શકાયું નથી",
+    dealer_bills_alert_title: "ડીલર બિલ",
+    dealer_bills_detail_qty: "જથ્થો",
+    dealer_bills_detail_mrp: "એમઆરપી",
+    dealer_bills_detail_amount: "રકમ",
+    attendance_title: "હાજરી",
+    attendance_subtitle: "ચેક-ઇન અને ચેક-આઉટ માર્ક કરો, પછી નીચે તમારી દૈનિક હાજરી જુઓ.",
+    attendance_today_in: "આજનું ઇન",
+    attendance_today_out: "આજનું આઉટ",
+    attendance_in_button: "ઇન",
+    attendance_out_button: "આઉટ",
+    attendance_daywise_title: "દિવસવાર હાજરી",
+    attendance_daywise_subtitle: "હાજરી માર્ક કર્યા પછી રિફ્રેશ કરવા માટે નીચે ખેંચો.",
+    attendance_empty_title: "હજુ સુધી હાજરી રેકોર્ડ નથી.",
+    attendance_empty_message: "તમારી પ્રથમ હાજરી એન્ટ્રી બનાવવા માટે ઉપરના બટન વાપરો.",
+    attendance_access_title: "હાજરી પ્રવેશ",
+    attendance_access_message: "આ ટેબ ફક્ત સ્ટાફ યુઝર્સ માટે ઉપલબ્ધ છે. હાલની ભૂમિકા: {{role}}.",
+    attendance_in_time: "ઇન સમય",
+    attendance_out_time: "આઉટ સમય",
+    attendance_status_present: "હાજર",
+    attendance_filter_title: "મહિનો ફિલ્ટર",
+    attendance_filter_month: "મહિનો",
+    attendance_filter_year: "વર્ષ",
+    attendance_empty_filtered: "આ મહિના માટે હાજરી રેકોર્ડ નથી.",
+    attendance_alert_title: "હાજરી",
+    attendance_checkin_success: "ચેક-ઇન સફળતાપૂર્વક માર્ક થયું.",
+    attendance_checkout_success: "ચેક-આઉટ સફળતાપૂર્વક માર્ક થયું.",
     common_cancel: "રદ કરો",
     common_save: "સેવ કરો",
     common_close: "બંધ કરો",
@@ -411,6 +580,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_welcome_message: "હાય {{name}}, આજે માટે તમારું વર્કસ્પેસ તૈયાર છે.",
     home_stats_user_title: "તમારી દુકાન સારાંશ",
     home_stats_my_shops: "મારી દુકાનો",
+    home_stats_staff_title: "તમારી હાજરી સારાંશ",
+    home_stats_attendance_days: "હાજરી દિવસો",
     home_stats_delivery_title: "તમારો ડિલિવરી સારાંશ",
     home_stats_pending_delivery: "ડિલિવરી માટે બાકી",
     home_stats_delivery_complete: "ડિલિવરી પૂર્ણ",

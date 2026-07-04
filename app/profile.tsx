@@ -2,15 +2,15 @@ import { useRouter } from 'expo-router';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/constants/i18n';
-import { clearAuthToken, getCurrentUser, getRoleLabel } from '@/services/api';
+import { getCurrentUser, getRoleLabel, logoutCurrentUser } from '@/services/api';
 
 export default function ProfileScreen() {
   const { t } = useI18n();
   const router = useRouter();
   const user = getCurrentUser();
 
-  const onLogout = () => {
-    clearAuthToken();
+  const onLogout = async () => {
+    await logoutCurrentUser();
     router.replace('/login');
   };
 

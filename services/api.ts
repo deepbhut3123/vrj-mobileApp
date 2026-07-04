@@ -154,6 +154,19 @@ export type DealerBill = {
   updatedAt?: string;
 };
 
+export type AttendanceAction = "in" | "out";
+
+export type AttendanceEntry = {
+  _id: string;
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  status: string;
+  note: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type UploadImageFile = {
   uri: string;
   name?: string;
@@ -528,6 +541,108 @@ const postWithFallback = async <T>(
   return asApiError(lastError, fallbackMessage) as ApiResult<T>;
 };
 
+const getWithFallback = async <T>(
+  paths: string[],
+  fallbackMessage: string,
+): Promise<ApiResult<T>> => {
+  let lastError: unknown = null;
+
+  for (const path of paths) {
+    try {
+      const response = await API.get<T>(path);
+      return asApiResult<T>(response.status, response.data);
+    } catch (error) {
+      lastError = error;
+
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status ?? null;
+        const shouldTryNextPath = status === 404;
+
+        if (!shouldTryNextPath) {
+          return asApiError(error, fallbackMessage) as ApiResult<T>;
+        }
+      } else {
+        return asApiError(error, fallbackMessage) as ApiResult<T>;
+      }
+    }
+  }
+
+  return asApiError(lastError, fallbackMessage) as ApiResult<T>;
+};
+
+const normalizeAttendanceValue = (value: unknown) => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return null;
+};
+
+const normalizeAttendanceEntry = (entry: unknown, index: number): AttendanceEntry | null => {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const record = entry as Record<string, unknown>;
+  const idRaw = record._id ?? record.id ?? `attendance-${index}`;
+  const dateRaw =
+    record.date ??
+    record.day ??
+    record.attendanceDate ??
+    record.createdAt ??
+    record.updatedAt ??
+    new Date().toISOString();
+  const checkInRaw =
+    record.checkIn ??
+    record.checkInTime ??
+    record.inTime ??
+    record.in ??
+    null;
+  const checkOutRaw =
+    record.checkOut ??
+    record.checkOutTime ??
+    record.outTime ??
+    record.out ??
+    null;
+  const statusRaw = record.status ?? record.attendanceStatus ?? record.state ?? "Present";
+  const noteRaw = record.note ?? record.notes ?? record.remark ?? record.message ?? "";
+
+  return {
+    _id: String(idRaw),
+    date: String(dateRaw),
+    checkIn: normalizeAttendanceValue(checkInRaw),
+    checkOut: normalizeAttendanceValue(checkOutRaw),
+    status: String(statusRaw || "Present"),
+    note: String(noteRaw || ""),
+    createdAt: normalizeAttendanceValue(record.createdAt) ?? undefined,
+    updatedAt: normalizeAttendanceValue(record.updatedAt) ?? undefined,
+  };
+};
+
+const extractAttendanceEntries = (payload: unknown): AttendanceEntry[] => {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const source = payload as Record<string, unknown>;
+  const listCandidate =
+    source.data ??
+    source.attendance ??
+    source.records ??
+    source.items ??
+    source.history;
+
+  if (!Array.isArray(listCandidate)) {
+    return [];
+  }
+
+  return listCandidate
+    .map((entry, index) => normalizeAttendanceEntry(entry, index))
+    .filter((entry): entry is AttendanceEntry => Boolean(entry));
+};
+
 export const pingBackend = async (): Promise<ApiResult> => {
   try {
     const response = await API.get("/api/health");
@@ -713,6 +828,17 @@ export const resetPassword = async (token: string, newPassword: string) => {
     return asApiResult(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to reset password.");
+  }
+};
+
+export const logoutCurrentUser = async () => {
+  try {
+    const response = await API.post("/api/auth/logout");
+    clearAuthToken();
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    clearAuthToken();
+    return asApiError(error, "Unable to logout cleanly. Local session was cleared.");
   }
 };
 
@@ -1078,6 +1204,40 @@ export const createAdminDealerBill = async (data: {
     return asApiResult<{ data: DealerBill }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create dealer bill.");
+  }
+};
+
+export const getStaffAttendanceHistory = async () => {
+  const result = await getWithFallback<unknown>(
+    ["/api/auth/attendance", "/api/admin/attendance"],
+    "Unable to fetch attendance history.",
+  );
+
+  if (!result.ok) {
+    return result as ApiResult<{ data: AttendanceEntry[] }>;
+  }
+
+  return {
+    ...result,
+    data: {
+      data: extractAttendanceEntries(result.data),
+    },
+  } satisfies ApiResult<{ data: AttendanceEntry[] }>;
+};
+
+export const markStaffAttendance = async (action: AttendanceAction) => {
+  try {
+    const response = await API.post(
+      action === "in"
+        ? "/api/auth/attendance/check-in"
+        : "/api/auth/attendance/check-out",
+    );
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    return asApiError(
+      error,
+      action === "in" ? "Unable to mark check-in." : "Unable to mark check-out.",
+    );
   }
 };
 

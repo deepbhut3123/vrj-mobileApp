@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import { useI18n } from '@/constants/i18n';
 import {
   type AppDealer,
   type DealerBill,
@@ -51,6 +52,7 @@ const sortDealerProductsBySequence = (list: DealerProduct[]) =>
   });
 
 export default function DealerBillsScreen() {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const user = getCurrentUser();
   const shouldHideAmounts = user?.roleId === 5;
@@ -66,7 +68,7 @@ export default function DealerBillsScreen() {
   const [dealerPickerVisible, setDealerPickerVisible] = useState(false);
   const [selectedDealerId, setSelectedDealerId] = useState('');
   const [billDate, setBillDate] = useState(todayValue());
-  const [kattaCount, setKattaCount] = useState('0');
+  const [kattaCount, setKattaCount] = useState('');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
 
   const loadBills = useCallback(async (mode: 'load' | 'refresh' = 'load') => {
@@ -94,14 +96,14 @@ export default function DealerBillsScreen() {
     setCatalogLoading(false);
 
     if (!dealersResult.ok || !productsResult.ok) {
-      Alert.alert('Unable to load dealer bill form', dealersResult.message || productsResult.message);
+      Alert.alert(t('dealer_bills_load_error'), dealersResult.message || productsResult.message);
       return false;
     }
 
     setDealers(extractList<AppDealer>(dealersResult.data));
     setProducts(sortDealerProductsBySequence(extractList<DealerProduct>(productsResult.data)));
     return true;
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadBills();
@@ -140,7 +142,7 @@ export default function DealerBillsScreen() {
     if (!ready) return;
     setSelectedDealerId('');
     setBillDate(todayValue());
-    setKattaCount('0');
+    setKattaCount('');
     setQuantities({});
     setModalVisible(true);
   };
@@ -156,6 +158,7 @@ export default function DealerBillsScreen() {
   };
 
   const onSaveBill = async () => {
+    const parsedKattaCount = Number(kattaCount || 0);
     const items = products
       .map((product) => ({
         productId: product._id,
@@ -167,8 +170,23 @@ export default function DealerBillsScreen() {
       }))
       .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0);
 
-    if (!selectedDealerId || !billDate.trim() || items.length === 0) {
-      Alert.alert('Validation', 'Select dealer, date, and at least one product quantity.');
+    if (!selectedDealerId) {
+      Alert.alert(t('common_validation'), t('dealer_bills_validation_dealer'));
+      return;
+    }
+
+    if (!billDate.trim()) {
+      Alert.alert(t('common_validation'), t('dealer_bills_validation_date'));
+      return;
+    }
+
+    if (!Number.isFinite(parsedKattaCount) || parsedKattaCount <= 0) {
+      Alert.alert(t('common_validation'), t('dealer_bills_validation_katta'));
+      return;
+    }
+
+    if (items.length === 0) {
+      Alert.alert(t('common_validation'), t('dealer_bills_validation_products'));
       return;
     }
 
@@ -176,19 +194,19 @@ export default function DealerBillsScreen() {
     const result = await createAdminDealerBill({
       dealerId: selectedDealerId,
       billDate: billDate.trim(),
-      kattaCount: Number(kattaCount || 0),
+      kattaCount: parsedKattaCount,
       items,
     });
     setSaving(false);
 
     if (!result.ok) {
-      Alert.alert('Unable to create dealer bill', result.message);
+      Alert.alert(t('dealer_bills_create_error'), result.message);
       return;
     }
 
     closeCreateModal();
     await loadBills();
-    Alert.alert('Dealer Bill', result.message);
+    Alert.alert(t('dealer_bills_alert_title'), result.message);
   };
 
   return (
@@ -201,11 +219,11 @@ export default function DealerBillsScreen() {
         }>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
-            <Text style={styles.title}>Dealer Bills</Text>
-            <Text style={styles.subtitle}>Review dealer bills, katta count, and item totals.</Text>
+            <Text style={styles.title}>{t('dealer_bills_title')}</Text>
+            <Text style={styles.subtitle}>{t('dealer_bills_subtitle')}</Text>
           </View>
           <Pressable disabled={catalogLoading} onPress={openCreateModal} style={styles.addButton}>
-            <Text style={styles.addButtonText}>{catalogLoading ? '...' : 'Add Bill'}</Text>
+            <Text style={styles.addButtonText}>{catalogLoading ? '...' : t('dealer_bills_add')}</Text>
           </Pressable>
         </View>
 
@@ -215,7 +233,7 @@ export default function DealerBillsScreen() {
           </View>
         ) : bills.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No dealer bills found.</Text>
+            <Text style={styles.emptyText}>{t('dealer_bills_empty')}</Text>
           </View>
         ) : (
           bills.map((bill) => (
@@ -225,22 +243,26 @@ export default function DealerBillsScreen() {
               onPress={() => setDetailBill(bill)}>
               <View style={styles.billTopRow}>
                 <View style={styles.billHeaderMain}>
-                  <Text style={styles.billShop}>{bill.dealerId?.dealerName || 'Unknown dealer'}</Text>
-                  <Text style={styles.billRoute}>{bill.dealerId?.city || 'Unknown city'}</Text>
+                  <Text style={styles.billShop}>{bill.dealerId?.dealerName || t('dealer_bills_unknown_dealer')}</Text>
+                  <Text style={styles.billRoute}>{bill.dealerId?.city || t('dealer_bills_unknown_city')}</Text>
                 </View>
                 <View style={styles.kattaPill}>
-                  <Text style={styles.kattaPillText}>Katta {bill.kattaCount ?? 0}</Text>
+                  <Text style={styles.kattaPillText}>{t('dealer_bills_katta')} {bill.kattaCount ?? 0}</Text>
                 </View>
               </View>
-              <Text style={styles.createdBy}>Created by {bill.userId?.name || bill.userId?.email || 'Unknown user'}</Text>
+              <Text style={styles.createdBy}>
+                {t('dealer_bills_created_by', {
+                  name: bill.userId?.name || bill.userId?.email || t('dealer_bills_unknown_user'),
+                })}
+              </Text>
               <View style={styles.billSummaryRow}>
                 <View style={styles.billInfoChip}>
-                  <Text style={styles.billInfoLabel}>Items</Text>
+                  <Text style={styles.billInfoLabel}>{t('bills_items')}</Text>
                   <Text style={styles.billInfoValue}>{bill.items?.length ?? 0}</Text>
                 </View>
                 {!shouldHideAmounts ? (
                   <View style={[styles.billInfoChip, styles.billTotalChip]}>
-                    <Text style={styles.billInfoLabel}>Total</Text>
+                    <Text style={styles.billInfoLabel}>{t('dealer_bills_total')}</Text>
                     <Text style={[styles.billInfoValue, styles.billTotalValue]}>{asCurrency(bill.totalAmount)}</Text>
                   </View>
                 ) : null}
@@ -255,21 +277,26 @@ export default function DealerBillsScreen() {
         <View style={[styles.modalBackdrop, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Dealer Bill</Text>
+              <Text style={styles.modalTitle}>{t('dealer_bills_new_title')}</Text>
               <Pressable onPress={closeCreateModal}>
-                <Text style={styles.closeText}>Close</Text>
+                <Text style={styles.closeText}>{t('dealer_bills_close')}</Text>
               </Pressable>
             </View>
 
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              <Text style={styles.fieldLabel}>Dealer</Text>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>{t('dealer_bills_field_dealer')}</Text>
               <Pressable onPress={() => setDealerPickerVisible(true)} style={styles.selectorInput}>
                 <Text style={selectedDealer ? styles.selectorValue : styles.selectorPlaceholder}>
-                  {selectedDealer ? selectedDealer.dealerName : 'Select dealer'}
+                  {selectedDealer ? selectedDealer.dealerName : t('dealer_bills_select_dealer')}
                 </Text>
               </Pressable>
 
-              <Text style={[styles.fieldLabel, styles.nextField]}>Bill Date</Text>
+              <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_date')}</Text>
               <TextInput
                 value={billDate}
                 onChangeText={setBillDate}
@@ -278,32 +305,22 @@ export default function DealerBillsScreen() {
                 style={styles.textInput}
               />
 
-              <Text style={[styles.fieldLabel, styles.nextField]}>Katta Count</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={kattaCount}
-                onChangeText={(value) => setKattaCount(value.replace(/[^0-9]/g, ''))}
-                placeholder="0"
-                placeholderTextColor="#9B7D7D"
-                style={styles.textInput}
-              />
-
-              <Text style={[styles.fieldLabel, styles.nextField]}>Products</Text>
+              <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_products')}</Text>
               <View style={styles.productsList}>
                 {products.map((product) => (
                   <View key={product._id} style={styles.productCard}>
-                    <Text style={styles.productTitleLine}>
-                      <Text style={styles.productMrpInline}>{Math.round(product.mrp)} </Text>
+                    <View style={styles.productTitleRow}>
+                      <Text style={styles.productMrpInline}>{Math.round(product.mrp)}</Text>
                       <Text style={styles.productName}>{product.productName}</Text>
-                    </Text>
+                    </View>
                     {!shouldHideAmounts ? (
                       <View style={styles.productMetaRow}>
                         <View style={styles.metaPill}>
-                          <Text style={styles.metaLabel}>Rate</Text>
+                          <Text style={styles.metaLabel}>{t('dealer_bills_rate')}</Text>
                           <Text style={styles.metaValue}>{asCurrency(product.productRate)}</Text>
                         </View>
                         <View style={[styles.metaPill, styles.totalPill]}>
-                          <Text style={styles.metaLabel}>Total</Text>
+                          <Text style={styles.metaLabel}>{t('dealer_bills_total')}</Text>
                           <Text style={[styles.metaValue, styles.totalPillValue]}>
                             {asCurrency(product.productRate * Number(quantities[product._id] || 0))}
                           </Text>
@@ -321,17 +338,27 @@ export default function DealerBillsScreen() {
                   </View>
                 ))}
               </View>
+
+              <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_katta')}</Text>
+              <TextInput
+                keyboardType="number-pad"
+                value={kattaCount}
+                onChangeText={(value) => setKattaCount(value.replace(/[^0-9]/g, ''))}
+                placeholder="0"
+                placeholderTextColor="#9B7D7D"
+                style={styles.textInput}
+              />
             </ScrollView>
 
             <View style={styles.stickyFooter}>
               {!shouldHideAmounts ? (
                 <View>
-                  <Text style={styles.totalLabel}>Bill Total</Text>
+                  <Text style={styles.totalLabel}>{t('dealer_bills_bill_total')}</Text>
                   <Text style={styles.totalValue}>{asCurrency(computedTotal)}</Text>
                 </View>
               ) : <View />}
               <Pressable disabled={saving} onPress={onSaveBill} style={styles.createButton}>
-                {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.createButtonText}>Create Bill</Text>}
+                {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.createButtonText}>{t('dealer_bills_create')}</Text>}
               </Pressable>
             </View>
           </View>
@@ -341,7 +368,7 @@ export default function DealerBillsScreen() {
       <Modal transparent visible={dealerPickerVisible} onRequestClose={() => setDealerPickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setDealerPickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>Choose Dealer</Text>
+            <Text style={styles.pickerTitle}>{t('dealer_bills_choose_dealer')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {dealers.map((dealer) => (
                 <Pressable
@@ -361,17 +388,20 @@ export default function DealerBillsScreen() {
       </Modal>
 
       <Modal transparent visible={Boolean(detailBill)} onRequestClose={() => setDetailBill(null)}>
-        <Pressable
-          style={[styles.detailBackdrop, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 16) }]}
-          onPress={() => setDetailBill(null)}>
-          <Pressable style={styles.detailCard} onPress={() => {}}>
+        <View style={[styles.detailBackdrop, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDetailBill(null)} />
+          <View style={styles.detailCard}>
             {detailBill ? (
               <>
                 <View style={styles.detailHeader}>
                   <View style={styles.detailHeaderCopy}>
-                    <Text style={styles.detailTitle}>{detailBill.dealerId?.dealerName || 'Unknown dealer'}</Text>
-                    <Text style={styles.detailSubtitle}>{detailBill.dealerId?.city || 'Unknown city'}</Text>
-                    <Text style={styles.detailCreatedBy}>Created by {detailBill.userId?.name || detailBill.userId?.email || 'Unknown user'}</Text>
+                    <Text style={styles.detailTitle}>{detailBill.dealerId?.dealerName || t('dealer_bills_unknown_dealer')}</Text>
+                    <Text style={styles.detailSubtitle}>{detailBill.dealerId?.city || t('dealer_bills_unknown_city')}</Text>
+                    <Text style={styles.detailCreatedBy}>
+                      {t('dealer_bills_created_by', {
+                        name: detailBill.userId?.name || detailBill.userId?.email || t('dealer_bills_unknown_user'),
+                      })}
+                    </Text>
                   </View>
                   <Pressable onPress={() => setDetailBill(null)} style={styles.detailCloseButton}>
                     <Ionicons name="close" size={18} color="#5B2121" />
@@ -380,38 +410,44 @@ export default function DealerBillsScreen() {
 
                 <View style={styles.detailMetaRow}>
                   <View style={styles.detailMetaChip}>
-                    <Text style={styles.detailMetaLabel}>Katta</Text>
+                    <Text style={styles.detailMetaLabel}>{t('dealer_bills_katta')}</Text>
                     <Text style={styles.detailMetaValue}>{detailBill.kattaCount ?? 0}</Text>
                   </View>
                   {!shouldHideAmounts ? (
                     <View style={styles.detailMetaChip}>
-                      <Text style={styles.detailMetaLabel}>Total</Text>
+                      <Text style={styles.detailMetaLabel}>{t('dealer_bills_total')}</Text>
                       <Text style={[styles.detailMetaValue, styles.detailMetaValueTotal]}>{asCurrency(detailBill.totalAmount)}</Text>
                     </View>
                   ) : null}
                 </View>
 
-                <ScrollView style={styles.detailList} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={styles.detailList}
+                  contentContainerStyle={styles.detailListContent}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled">
                   {orderedItems.map((item, index) => (
                     <View key={`${item.productName || 'item'}-${index}`} style={styles.detailItemCard}>
-                      <Text style={styles.detailItemName}>{item.productName || 'Custom item'}</Text>
+                      <View style={styles.detailItemHeader}>
+                        {!shouldHideAmounts && Number(item.mrp || 0) > 0 ? (
+                          <Text style={styles.detailItemMrpInline}>{Math.round(Number(item.mrp || 0))}</Text>
+                        ) : null}
+                        <Text style={styles.detailItemName}>{item.productName || 'Custom item'}</Text>
+                      </View>
                       <View style={styles.detailItemRow}>
                         <View style={styles.detailItemStat}>
-                          <Text style={styles.detailItemLabel}>Qty</Text>
+                          <Text style={styles.detailItemLabel}>{t('dealer_bills_detail_qty')}</Text>
                           <Text style={styles.detailItemValue}>{item.quantity ?? 0}</Text>
                         </View>
                         {!shouldHideAmounts ? (
                           <>
                             <View style={styles.detailItemStat}>
-                              <Text style={styles.detailItemLabel}>MRP</Text>
-                              <Text style={styles.detailItemValue}>{asCurrency(Number(item.mrp || 0))}</Text>
-                            </View>
-                            <View style={styles.detailItemStat}>
-                              <Text style={styles.detailItemLabel}>Amount</Text>
+                              <Text style={styles.detailItemLabel}>{t('dealer_bills_detail_amount')}</Text>
                               <Text style={styles.detailItemValue}>{asCurrency(Number(item.amount || 0))}</Text>
                             </View>
                             <View style={styles.detailItemStat}>
-                              <Text style={styles.detailItemLabel}>Total</Text>
+                              <Text style={styles.detailItemLabel}>{t('dealer_bills_total')}</Text>
                               <Text style={[styles.detailItemValue, styles.detailItemTotal]}>{asCurrency(Number(item.total || 0))}</Text>
                             </View>
                           </>
@@ -422,8 +458,8 @@ export default function DealerBillsScreen() {
                 </ScrollView>
               </>
             ) : null}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -472,9 +508,9 @@ const styles = StyleSheet.create({
   textInput: { height: 52, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E6CFC8', paddingHorizontal: 14, color: '#4B2320', fontSize: 16, fontWeight: '600' },
   productsList: { gap: 12 },
   productCard: { backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: '#F1DAD4', padding: 14 },
-  productTitleLine: { fontSize: 17, fontWeight: '800', color: '#5A1717' },
-  productMrpInline: { fontSize: 17, fontWeight: '800', color: '#A03232' },
+  productTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6 },
   productName: { fontSize: 17, fontWeight: '800', color: '#5A1717' },
+  productMrpInline: { fontSize: 15, fontWeight: '800', color: '#A03232' },
   productMetaRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 12 },
   metaPill: { flex: 1, minHeight: 88, borderRadius: 16, backgroundColor: '#FFF6F4', borderWidth: 1, borderColor: '#F2E3DF', paddingHorizontal: 12, paddingVertical: 10, justifyContent: 'center' },
   totalPill: { backgroundColor: '#FDECEC', borderColor: '#F0CFCA' },
@@ -507,8 +543,11 @@ const styles = StyleSheet.create({
   detailMetaValue: { marginTop: 4, fontSize: 16, fontWeight: '800', color: '#4B2320' },
   detailMetaValueTotal: { color: '#A03232' },
   detailList: { marginTop: 16 },
+  detailListContent: { paddingBottom: 8 },
   detailItemCard: { backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#F2E3DF', padding: 14, marginBottom: 10 },
+  detailItemHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6 },
   detailItemName: { fontSize: 16, fontWeight: '800', color: '#5A1717' },
+  detailItemMrpInline: { fontSize: 14, fontWeight: '800', color: '#A03232' },
   detailItemRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   detailItemStat: { flexGrow: 1, minWidth: '22%', borderRadius: 14, backgroundColor: '#FFF6F4', borderWidth: 1, borderColor: '#F2E3DF', paddingHorizontal: 10, paddingVertical: 9 },
   detailItemLabel: { fontSize: 11, fontWeight: '700', color: '#8B6B63', textTransform: 'uppercase' },

@@ -99,13 +99,23 @@ export default function TabsLayout() {
   }
 
   if (isDealerBillsOnly) {
+    // Hide dealer bills tab for staff login without removing the dealer screen/routes.
+    // navItems.push({
+    //   key: 'dealer-bills',
+    //   label: t('tabs_dealer_bills'),
+    //   href: '/dealer-bills',
+    //   activePaths: ['/dealer-bills'],
+    //   icon: 'newspaper-outline',
+    //   activeIcon: 'newspaper',
+    // });
+
     navItems.push({
-      key: 'dealer-bills',
-      label: t('tabs_dealer_bills'),
-      href: '/dealer-bills',
-      activePaths: ['/dealer-bills'],
-      icon: 'newspaper-outline',
-      activeIcon: 'newspaper',
+      key: 'staff-attendance',
+      label: t('tabs_attendance'),
+      href: '/staff-attendance',
+      activePaths: ['/staff-attendance'],
+      icon: 'calendar-outline',
+      activeIcon: 'calendar',
     });
   }
 

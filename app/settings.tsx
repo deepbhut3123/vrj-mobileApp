@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/constants/i18n';
-import { clearAuthToken, getCurrentUser, getRoleLabel } from '@/services/api';
+import { getCurrentUser, getRoleLabel, logoutCurrentUser } from '@/services/api';
 
 export default function SettingsScreen() {
   const { language, setLanguage, t } = useI18n();
@@ -15,8 +15,8 @@ export default function SettingsScreen() {
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
 
-  const onLogout = () => {
-    clearAuthToken();
+  const onLogout = async () => {
+    await logoutCurrentUser();
     router.replace('/login');
   };
 
