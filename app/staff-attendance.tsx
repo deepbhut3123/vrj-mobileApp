@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   Alert,
@@ -21,8 +22,59 @@ import {
   getCurrentUser,
   getRoleLabel,
   getStaffAttendanceHistory,
-  markStaffAttendance,
+  markStaffAttendanceWithLocation,
 } from '@/services/api';
+
+const toNumberOrNull = (value: string | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const ATTENDANCE_TARGET_LATITUDE = toNumberOrNull(process.env.EXPO_PUBLIC_ATTENDANCE_TARGET_LATITUDE);
+const ATTENDANCE_TARGET_LONGITUDE = toNumberOrNull(process.env.EXPO_PUBLIC_ATTENDANCE_TARGET_LONGITUDE);
+const ATTENDANCE_RADIUS_METERS = toNumberOrNull(process.env.EXPO_PUBLIC_ATTENDANCE_RADIUS_METERS) ?? 150;
+
+const ATTENDANCE_LOCATION_CONFIGURED =
+  ATTENDANCE_TARGET_LATITUDE !== null && ATTENDANCE_TARGET_LONGITUDE !== null;
+
+const getDistanceMeters = (
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) => {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const earthRadiusMeters = 6_371_000;
+  const latitudeDelta = toRadians(to.latitude - from.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const fromLatitudeRadians = toRadians(from.latitude);
+  const toLatitudeRadians = toRadians(to.latitude);
+
+  const haversine =
+    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+    Math.cos(fromLatitudeRadians) *
+      Math.cos(toLatitudeRadians) *
+      Math.sin(longitudeDelta / 2) *
+      Math.sin(longitudeDelta / 2);
+
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
+const formatDistance = (distanceMeters: number, locale: string) => {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)} m`;
+  }
+
+  const distanceKilometers = distanceMeters / 1000;
+  const maximumFractionDigits = distanceKilometers < 10 ? 2 : 1;
+
+  return `${new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  }).format(distanceKilometers)} km`;
+};
 
 const formatDay = (value: string, locale: string) => {
   const date = new Date(value);
@@ -96,6 +148,10 @@ export default function StaffAttendanceScreen() {
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [yearPickerVisible, setYearPickerVisible] = useState(false);
+  const [locationChecking, setLocationChecking] = useState(false);
+  const [locationAllowed, setLocationAllowed] = useState(!ATTENDANCE_LOCATION_CONFIGURED);
+  const [locationDistanceMeters, setLocationDistanceMeters] = useState<number | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const loadHistory = useCallback(async (mode: 'load' | 'refresh' = 'load') => {
     if (!isStaff) {
@@ -157,10 +213,169 @@ export default function StaffAttendanceScreen() {
 
   const canCheckIn = isStaff && !todayEntry?.checkIn && submittingAction === null;
   const canCheckOut = isStaff && Boolean(todayEntry?.checkIn) && !todayEntry?.checkOut && submittingAction === null;
+  const canBreakIn =
+    isStaff &&
+    Boolean(todayEntry?.checkIn) &&
+    !todayEntry?.breakIn &&
+    !todayEntry?.checkOut &&
+    submittingAction === null;
+  const canBreakOut =
+    isStaff &&
+    Boolean(todayEntry?.breakIn) &&
+    !todayEntry?.breakOut &&
+    !todayEntry?.checkOut &&
+    submittingAction === null;
+
+  const getCurrentCoordinates = useCallback(async () => {
+    const existingPermission = await Location.getForegroundPermissionsAsync();
+    const permission =
+      existingPermission.status === 'granted'
+        ? existingPermission
+        : await Location.requestForegroundPermissionsAsync();
+
+    if (permission.status !== 'granted') {
+      throw new Error('LOCATION_PERMISSION_DENIED');
+    }
+
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      try {
+        await Location.enableNetworkProviderAsync();
+      } catch {
+        throw new Error('LOCATION_SERVICES_DISABLED');
+      }
+    }
+
+    try {
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+    } catch {
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: 60_000,
+      });
+      if (!lastKnown) {
+        throw new Error('NO_LOCATION_FIX');
+      }
+      return {
+        latitude: lastKnown.coords.latitude,
+        longitude: lastKnown.coords.longitude,
+      };
+    }
+  }, []);
+
+  const refreshAttendanceAccess = useCallback(async () => {
+    if (!isStaff || !ATTENDANCE_LOCATION_CONFIGURED) {
+      setLocationAllowed(true);
+      setLocationDistanceMeters(null);
+      setLocationError(null);
+      setLocationChecking(false);
+      return;
+    }
+
+    setLocationChecking(true);
+    try {
+      const coordinates = await getCurrentCoordinates();
+      const distance = getDistanceMeters(coordinates, {
+        latitude: ATTENDANCE_TARGET_LATITUDE,
+        longitude: ATTENDANCE_TARGET_LONGITUDE,
+      });
+
+      setLocationDistanceMeters(distance);
+      setLocationAllowed(distance <= ATTENDANCE_RADIUS_METERS);
+      setLocationError(null);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'NO_LOCATION_FIX';
+      setLocationAllowed(false);
+      setLocationDistanceMeters(null);
+      setLocationError(code);
+    } finally {
+      setLocationChecking(false);
+    }
+  }, [getCurrentCoordinates, isStaff]);
+
+  const locationStatusMessage = useMemo(() => {
+    const formattedDistance = formatDistance(locationDistanceMeters ?? 0, locale);
+    const formattedRadius = formatDistance(ATTENDANCE_RADIUS_METERS, locale);
+
+    if (!ATTENDANCE_LOCATION_CONFIGURED) {
+      return t('attendance_location_not_configured');
+    }
+
+    if (locationChecking) {
+      return t('attendance_location_checking');
+    }
+
+    if (locationError === 'LOCATION_PERMISSION_DENIED') {
+      return t('attendance_location_permission');
+    }
+
+    if (locationError === 'LOCATION_SERVICES_DISABLED') {
+      return t('attendance_location_services');
+    }
+
+    if (locationError) {
+      return t('attendance_location_unavailable');
+    }
+
+    if (locationAllowed) {
+      return t('attendance_location_allowed', {
+        distance: formattedDistance,
+        radius: formattedRadius,
+      });
+    }
+
+    return t('attendance_location_outside', {
+      distance: formattedDistance,
+      radius: formattedRadius,
+    });
+  }, [locale, locationAllowed, locationChecking, locationDistanceMeters, locationError, t]);
 
   const handleAttendanceAction = async (action: AttendanceAction) => {
+    let coordinates: { latitude: number; longitude: number };
+    try {
+      coordinates = await getCurrentCoordinates();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      const message =
+        code === 'LOCATION_PERMISSION_DENIED'
+          ? t('attendance_location_permission')
+          : code === 'LOCATION_SERVICES_DISABLED'
+          ? t('attendance_location_services')
+          : t('attendance_location_unavailable');
+      Alert.alert(t('attendance_alert_title'), message);
+      return;
+    }
+
+    if (ATTENDANCE_LOCATION_CONFIGURED) {
+      const distance = getDistanceMeters(coordinates, {
+        latitude: ATTENDANCE_TARGET_LATITUDE,
+        longitude: ATTENDANCE_TARGET_LONGITUDE,
+      });
+
+      setLocationDistanceMeters(distance);
+      const isAllowed = distance <= ATTENDANCE_RADIUS_METERS;
+      setLocationAllowed(isAllowed);
+      setLocationError(null);
+
+      if (!isAllowed) {
+        Alert.alert(
+          t('attendance_alert_title'),
+          t('attendance_location_outside', {
+            distance: formatDistance(distance, locale),
+            radius: formatDistance(ATTENDANCE_RADIUS_METERS, locale),
+          }),
+        );
+        return;
+      }
+    }
+
     setSubmittingAction(action);
-    const result = await markStaffAttendance(action);
+    const result = await markStaffAttendanceWithLocation(action, coordinates);
     setSubmittingAction(null);
 
     if (!result.ok) {
@@ -170,7 +385,13 @@ export default function StaffAttendanceScreen() {
 
     Alert.alert(
       t('attendance_alert_title'),
-      action === 'in' ? t('attendance_checkin_success') : t('attendance_checkout_success'),
+      action === 'in'
+        ? t('attendance_checkin_success')
+        : action === 'out'
+        ? t('attendance_checkout_success')
+        : action === 'break-in'
+        ? t('attendance_breakin_success')
+        : t('attendance_breakout_success'),
     );
     await loadHistory('refresh');
   };
@@ -179,7 +400,16 @@ export default function StaffAttendanceScreen() {
     setSelectedMonth(currentDate.getMonth());
     setSelectedYear(currentDate.getFullYear());
     void loadHistory('refresh');
+    void refreshAttendanceAccess();
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshAttendanceAccess();
+    }, [refreshAttendanceAccess]),
+  );
+
+  const canUseAttendanceButtons = locationAllowed && !locationChecking;
 
   if (!isStaff) {
     return (
@@ -206,6 +436,11 @@ export default function StaffAttendanceScreen() {
           <Text style={styles.title}>{t('attendance_title')}</Text>
           <Text style={styles.subtitle}>{t('attendance_subtitle')}</Text>
 
+          <View style={[styles.locationCard, locationAllowed ? styles.locationCardAllowed : styles.locationCardBlocked]}>
+            <Text style={styles.locationTitle}>{t('attendance_location_status_title')}</Text>
+            <Text style={styles.locationText}>{locationStatusMessage}</Text>
+          </View>
+
           <View style={styles.todayRow}>
             <View style={styles.todayPill}>
               <Text style={styles.todayLabel}>{t('attendance_today_in')}</Text>
@@ -217,11 +452,26 @@ export default function StaffAttendanceScreen() {
             </View>
           </View>
 
+          <View style={styles.todayRow}>
+            <View style={styles.todayPill}>
+              <Text style={styles.todayLabel}>{t('attendance_today_break_in')}</Text>
+              <Text style={styles.todayValue}>{formatTime(todayEntry?.breakIn ?? null, locale)}</Text>
+            </View>
+            <View style={styles.todayPill}>
+              <Text style={styles.todayLabel}>{t('attendance_today_break_out')}</Text>
+              <Text style={styles.todayValue}>{formatTime(todayEntry?.breakOut ?? null, locale)}</Text>
+            </View>
+          </View>
+
           <View style={styles.actionRow}>
             <Pressable
-              disabled={!canCheckIn}
+              disabled={!canCheckIn || !canUseAttendanceButtons}
               onPress={() => void handleAttendanceAction('in')}
-              style={[styles.actionButton, styles.actionButtonIn, !canCheckIn && styles.buttonDisabled]}>
+              style={[
+                styles.actionButton,
+                styles.actionButtonIn,
+                (!canCheckIn || !canUseAttendanceButtons) && styles.buttonDisabled,
+              ]}>
               {submittingAction === 'in' ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
@@ -230,13 +480,49 @@ export default function StaffAttendanceScreen() {
             </Pressable>
 
             <Pressable
-              disabled={!canCheckOut}
+              disabled={!canCheckOut || !canUseAttendanceButtons}
               onPress={() => void handleAttendanceAction('out')}
-              style={[styles.actionButton, styles.actionButtonOut, !canCheckOut && styles.buttonDisabled]}>
+              style={[
+                styles.actionButton,
+                styles.actionButtonOut,
+                (!canCheckOut || !canUseAttendanceButtons) && styles.buttonDisabled,
+              ]}>
               {submittingAction === 'out' ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.actionButtonText}>{t('attendance_out_button')}</Text>
+              )}
+            </Pressable>
+          </View>
+
+          <View style={styles.actionRow}>
+            <Pressable
+              disabled={!canBreakIn || !canUseAttendanceButtons}
+              onPress={() => void handleAttendanceAction('break-in')}
+              style={[
+                styles.actionButton,
+                styles.actionButtonBreakIn,
+                (!canBreakIn || !canUseAttendanceButtons) && styles.buttonDisabled,
+              ]}>
+              {submittingAction === 'break-in' ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.actionButtonText}>{t('attendance_break_in_button')}</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              disabled={!canBreakOut || !canUseAttendanceButtons}
+              onPress={() => void handleAttendanceAction('break-out')}
+              style={[
+                styles.actionButton,
+                styles.actionButtonBreakOut,
+                (!canBreakOut || !canUseAttendanceButtons) && styles.buttonDisabled,
+              ]}>
+              {submittingAction === 'break-out' ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.actionButtonText}>{t('attendance_break_out_button')}</Text>
               )}
             </Pressable>
           </View>
@@ -291,6 +577,17 @@ export default function StaffAttendanceScreen() {
                     <View style={styles.timeBox}>
                       <Text style={styles.timeLabel}>{t('attendance_out_time')}</Text>
                       <Text style={styles.timeValue}>{formatTime(entry.checkOut, locale)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.timeGrid}>
+                    <View style={styles.timeBox}>
+                      <Text style={styles.timeLabel}>{t('attendance_break_in_time')}</Text>
+                      <Text style={styles.timeValue}>{formatTime(entry.breakIn ?? null, locale)}</Text>
+                    </View>
+                    <View style={styles.timeBox}>
+                      <Text style={styles.timeLabel}>{t('attendance_break_out_time')}</Text>
+                      <Text style={styles.timeValue}>{formatTime(entry.breakOut ?? null, locale)}</Text>
                     </View>
                   </View>
 
@@ -380,6 +677,30 @@ const styles = StyleSheet.create({
     color: '#4C665B',
     lineHeight: 20,
   },
+  locationCard: {
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+  },
+  locationCardAllowed: {
+    backgroundColor: '#ECF9F1',
+    borderColor: '#B7E1C4',
+  },
+  locationCardBlocked: {
+    backgroundColor: '#FFF5F2',
+    borderColor: '#F1CCC3',
+  },
+  locationTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#244434',
+  },
+  locationText: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5A6E63',
+  },
   todayRow: {
     flexDirection: 'row',
     gap: 12,
@@ -419,6 +740,12 @@ const styles = StyleSheet.create({
   },
   actionButtonOut: {
     backgroundColor: '#C06A18',
+  },
+  actionButtonBreakIn: {
+    backgroundColor: '#165FA6',
+  },
+  actionButtonBreakOut: {
+    backgroundColor: '#7B3FC7',
   },
   actionButtonText: {
     color: '#FFFFFF',

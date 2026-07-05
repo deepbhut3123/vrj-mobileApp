@@ -154,13 +154,15 @@ export type DealerBill = {
   updatedAt?: string;
 };
 
-export type AttendanceAction = "in" | "out";
+export type AttendanceAction = "in" | "out" | "break-in" | "break-out";
 
 export type AttendanceEntry = {
   _id: string;
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  breakIn?: string | null;
+  breakOut?: string | null;
   status: string;
   note: string;
   createdAt?: string;
@@ -606,6 +608,20 @@ const normalizeAttendanceEntry = (entry: unknown, index: number): AttendanceEntr
     record.outTime ??
     record.out ??
     null;
+  const breakInRaw =
+    record.breakIn ??
+    record.breakInTime ??
+    record.breakStart ??
+    record.breakStartTime ??
+    record.break_in ??
+    null;
+  const breakOutRaw =
+    record.breakOut ??
+    record.breakOutTime ??
+    record.breakEnd ??
+    record.breakEndTime ??
+    record.break_out ??
+    null;
   const statusRaw = record.status ?? record.attendanceStatus ?? record.state ?? "Present";
   const noteRaw = record.note ?? record.notes ?? record.remark ?? record.message ?? "";
 
@@ -614,6 +630,8 @@ const normalizeAttendanceEntry = (entry: unknown, index: number): AttendanceEntr
     date: String(dateRaw),
     checkIn: normalizeAttendanceValue(checkInRaw),
     checkOut: normalizeAttendanceValue(checkOutRaw),
+    breakIn: normalizeAttendanceValue(breakInRaw),
+    breakOut: normalizeAttendanceValue(breakOutRaw),
     status: String(statusRaw || "Present"),
     note: String(noteRaw || ""),
     createdAt: normalizeAttendanceValue(record.createdAt) ?? undefined,
@@ -1226,18 +1244,65 @@ export const getStaffAttendanceHistory = async () => {
 };
 
 export const markStaffAttendance = async (action: AttendanceAction) => {
+  return markStaffAttendanceWithLocation(action, {});
+};
+
+export const markStaffAttendanceWithLocation = async (
+  action: AttendanceAction,
+  data: {
+    latitude?: number;
+    longitude?: number;
+  },
+) => {
+  const requestBody = {
+    latitude: data.latitude,
+    longitude: data.longitude,
+  };
+  const endpoints = (() => {
+    switch (action) {
+      case "in":
+        return ["/api/auth/attendance/check-in"];
+      case "out":
+        return ["/api/auth/attendance/check-out"];
+      case "break-in":
+        return ["/api/auth/attendance/break-in"];
+      case "break-out":
+        return ["/api/auth/attendance/break-out"];
+      default:
+        return ["/api/auth/attendance/check-in"];
+    }
+  })();
+  const fallbackMessage = (() => {
+    switch (action) {
+      case "in":
+        return "Unable to mark check-in.";
+      case "out":
+        return "Unable to mark check-out.";
+      case "break-in":
+        return "Unable to mark break-in.";
+      case "break-out":
+        return "Unable to mark break-out.";
+      default:
+        return "Unable to mark attendance.";
+    }
+  })();
+
+  let lastError: unknown = null;
+
   try {
-    const response = await API.post(
-      action === "in"
-        ? "/api/auth/attendance/check-in"
-        : "/api/auth/attendance/check-out",
-    );
-    return asApiResult(response.status, response.data);
+    for (const endpoint of endpoints) {
+      try {
+        const response = await API.post(endpoint, requestBody);
+        return asApiResult(response.status, response.data);
+      } catch (error) {
+        lastError = error;
+        return asApiError(error, fallbackMessage);
+      }
+    }
   } catch (error) {
-    return asApiError(
-      error,
-      action === "in" ? "Unable to mark check-in." : "Unable to mark check-out.",
-    );
+    lastError = error;
   }
+
+  return asApiError(lastError, fallbackMessage);
 };
 

@@ -55,8 +55,12 @@ type TranslationKey =
   | "attendance_subtitle"
   | "attendance_today_in"
   | "attendance_today_out"
+  | "attendance_today_break_in"
+  | "attendance_today_break_out"
   | "attendance_in_button"
   | "attendance_out_button"
+  | "attendance_break_in_button"
+  | "attendance_break_out_button"
   | "attendance_daywise_title"
   | "attendance_daywise_subtitle"
   | "attendance_empty_title"
@@ -65,6 +69,8 @@ type TranslationKey =
   | "attendance_access_message"
   | "attendance_in_time"
   | "attendance_out_time"
+  | "attendance_break_in_time"
+  | "attendance_break_out_time"
   | "attendance_status_present"
   | "attendance_filter_title"
   | "attendance_filter_month"
@@ -73,6 +79,16 @@ type TranslationKey =
   | "attendance_alert_title"
   | "attendance_checkin_success"
   | "attendance_checkout_success"
+  | "attendance_breakin_success"
+  | "attendance_breakout_success"
+  | "attendance_location_permission"
+  | "attendance_location_services"
+  | "attendance_location_unavailable"
+  | "attendance_location_status_title"
+  | "attendance_location_checking"
+  | "attendance_location_allowed"
+  | "attendance_location_outside"
+  | "attendance_location_not_configured"
   | "common_cancel"
   | "common_save"
   | "common_close"
@@ -267,8 +283,12 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_subtitle: "Mark your check-in and check-out, then review your day-wise attendance below.",
     attendance_today_in: "Today In",
     attendance_today_out: "Today Out",
+    attendance_today_break_in: "Break In",
+    attendance_today_break_out: "Break Out",
     attendance_in_button: "In",
     attendance_out_button: "Out",
+    attendance_break_in_button: "Break In",
+    attendance_break_out_button: "Break Out",
     attendance_daywise_title: "Day-wise Attendance",
     attendance_daywise_subtitle: "Pull down to refresh after marking attendance.",
     attendance_empty_title: "No attendance records yet.",
@@ -277,6 +297,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_access_message: "This tab is available for staff users only. Current role: {{role}}.",
     attendance_in_time: "In Time",
     attendance_out_time: "Out Time",
+    attendance_break_in_time: "Break In Time",
+    attendance_break_out_time: "Break Out Time",
     attendance_status_present: "Present",
     attendance_filter_title: "Month Filter",
     attendance_filter_month: "Month",
@@ -285,6 +307,16 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_alert_title: "Attendance",
     attendance_checkin_success: "Check-in marked successfully.",
     attendance_checkout_success: "Check-out marked successfully.",
+    attendance_breakin_success: "Break-in marked successfully.",
+    attendance_breakout_success: "Break-out marked successfully.",
+    attendance_location_permission: "Location permission is required to mark attendance.",
+    attendance_location_services: "Please enable location services to mark attendance.",
+    attendance_location_unavailable: "Current location could not be detected. Attendance action was not sent.",
+    attendance_location_status_title: "Location Status",
+    attendance_location_checking: "Checking your current location for attendance access.",
+    attendance_location_allowed: "You are inside the attendance area. Distance: {{distance}} of {{radius}} allowed.",
+    attendance_location_outside: "Attendance is disabled here. You are {{distance}} away and must be within {{radius}}.",
+    attendance_location_not_configured: "Attendance location is not configured yet. Set office latitude and longitude in the app environment.",
     common_cancel: "Cancel",
     common_save: "Save",
     common_close: "Close",
@@ -486,8 +518,12 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_subtitle: "ચેક-ઇન અને ચેક-આઉટ માર્ક કરો, પછી નીચે તમારી દૈનિક હાજરી જુઓ.",
     attendance_today_in: "આજનું ઇન",
     attendance_today_out: "આજનું આઉટ",
+    attendance_today_break_in: "બ્રેક ઇન",
+    attendance_today_break_out: "બ્રેક આઉટ",
     attendance_in_button: "ઇન",
     attendance_out_button: "આઉટ",
+    attendance_break_in_button: "બ્રેક ઇન",
+    attendance_break_out_button: "બ્રેક આઉટ",
     attendance_daywise_title: "દિવસવાર હાજરી",
     attendance_daywise_subtitle: "હાજરી માર્ક કર્યા પછી રિફ્રેશ કરવા માટે નીચે ખેંચો.",
     attendance_empty_title: "હજુ સુધી હાજરી રેકોર્ડ નથી.",
@@ -496,6 +532,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_access_message: "આ ટેબ ફક્ત સ્ટાફ યુઝર્સ માટે ઉપલબ્ધ છે. હાલની ભૂમિકા: {{role}}.",
     attendance_in_time: "ઇન સમય",
     attendance_out_time: "આઉટ સમય",
+    attendance_break_in_time: "બ્રેક ઇન સમય",
+    attendance_break_out_time: "બ્રેક આઉટ સમય",
     attendance_status_present: "હાજર",
     attendance_filter_title: "મહિનો ફિલ્ટર",
     attendance_filter_month: "મહિનો",
@@ -504,6 +542,16 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_alert_title: "હાજરી",
     attendance_checkin_success: "ચેક-ઇન સફળતાપૂર્વક માર્ક થયું.",
     attendance_checkout_success: "ચેક-આઉટ સફળતાપૂર્વક માર્ક થયું.",
+    attendance_breakin_success: "બ્રેક-ઇન સફળતાપૂર્વક માર્ક થયું.",
+    attendance_breakout_success: "બ્રેક-આઉટ સફળતાપૂર્વક માર્ક થયું.",
+    attendance_location_permission: "હાજરી માર્ક કરવા માટે લોકેશન પરમિશન જરૂરી છે.",
+    attendance_location_services: "હાજરી માર્ક કરવા માટે કૃપા કરીને લોકેશન સર્વિસ ચાલુ કરો.",
+    attendance_location_unavailable: "હાલનું લોકેશન મળ્યું નથી. હાજરી ક્રિયા મોકલવામાં આવી નથી.",
+    attendance_location_status_title: "લોકેશન સ્થિતિ",
+    attendance_location_checking: "હાજરી માટે તમારું હાલનું લોકેશન ચકાસી રહ્યા છીએ.",
+    attendance_location_allowed: "તમે હાજરી વિસ્તારની અંદર છો. અંતર: {{distance}}, મંજૂર મર્યાદા {{radius}}.",
+    attendance_location_outside: "અહીં હાજરી બંધ છે. તમે {{distance}} દૂર છો અને {{radius}}ની અંદર હોવું જરૂરી છે.",
+    attendance_location_not_configured: "હાજરી લોકેશન હજુ સેટ થયેલ નથી. એપ એન્વાયર્નમેન્ટમાં ઓફિસ latitude અને longitude સેટ કરો.",
     common_cancel: "રદ કરો",
     common_save: "સેવ કરો",
     common_close: "બંધ કરો",
