@@ -26,10 +26,11 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const roleId = Number(user?.roleId ?? 0);
   const isAdmin = roleId === 1;
+  const isDealer = roleId === 3;
   const isStaffRoleFour = roleId === 4;
   const isDealerBillsOnly = roleId === 5;
   const isRetailerBillsOnly = roleId === 6;
-  const canUseRetailerTabs = !isAdmin && !isDealerBillsOnly && !isRetailerBillsOnly;
+  const canUseRetailerTabs = !isAdmin && !isDealer && !isDealerBillsOnly && !isRetailerBillsOnly;
 
   useEffect(() => {
     if (!user) {
@@ -96,6 +97,17 @@ export default function TabsLayout() {
         activeIcon: 'newspaper',
       },
     );
+  }
+
+  if (isDealer) {
+    navItems.push({
+      key: 'dealer-bills',
+      label: t('tabs_bill'),
+      href: '/dealer-bills',
+      activePaths: ['/dealer-bills'],
+      icon: 'newspaper-outline',
+      activeIcon: 'newspaper',
+    });
   }
 
   if (isDealerBillsOnly) {

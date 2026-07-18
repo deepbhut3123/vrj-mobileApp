@@ -28,27 +28,45 @@ import {
   deleteBillById,
   getBillProducts,
   getCurrentUser,
+  getMyRoutes,
   getMyBills,
   getMyShops,
-  getShopRoutes,
   updateBillById,
 } from '@/services/api';
 
 const asCurrency = (value: number) => `Rs. ${value.toFixed(2)}`;
 const asTableAmount = (value: number) => value.toFixed(2);
 
-const getRouteLabel = (route: string | AppRoute | undefined) => {
+const pickLocalizedValue = (
+  language: 'en' | 'gu',
+  englishValue?: string,
+  gujaratiValue?: string,
+) => {
+  const english = englishValue?.trim() ?? '';
+  const gujarati = gujaratiValue?.trim() ?? '';
+
+  if (language === 'gu') {
+    return gujarati || english;
+  }
+
+  return english || gujarati;
+};
+
+const getRouteLabel = (route: string | AppRoute | undefined, language: 'en' | 'gu') => {
   if (!route || typeof route === 'string') {
     return 'Unknown route';
   }
-  return [route.routeName, route.cityName].filter(Boolean).join(', ');
+  return [
+    pickLocalizedValue(language, route.routeName, route.routeNameGujarati),
+    pickLocalizedValue(language, route.cityName, route.cityNameGujarati),
+  ].filter(Boolean).join(', ');
 };
 
-const getShopLabel = (shop: string | AppShop | undefined) => {
+const getShopLabel = (shop: string | AppShop | undefined, language: 'en' | 'gu') => {
   if (!shop || typeof shop === 'string') {
     return 'Unknown shop';
   }
-  return shop.shopName;
+  return pickLocalizedValue(language, shop.shopName, shop.shopNameGujarati);
 };
 
 const getBillItemProductId = (item: AppBillItem) => {
@@ -95,7 +113,7 @@ const sortProductsBySequence = (list: AppProduct[]) =>
   });
 
 export default function BillsScreen() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const user = getCurrentUser();
   const insets = useSafeAreaInsets();
 
@@ -131,13 +149,13 @@ export default function BillsScreen() {
 
   const selectedRouteName = useMemo(() => {
     const route = routes.find((item) => item._id === selectedRouteId);
-    return route ? `${route.routeName}, ${route.cityName}` : t('bills_select_route');
-  }, [routes, selectedRouteId, t]);
+    return route ? getRouteLabel(route, language) : t('bills_select_route');
+  }, [language, routes, selectedRouteId, t]);
 
   const selectedShopName = useMemo(() => {
     const shop = filteredShops.find((item) => item._id === selectedShopId);
-    return shop ? shop.shopName : t('bills_select_shop');
-  }, [filteredShops, selectedShopId, t]);
+    return shop ? getShopLabel(shop, language) : t('bills_select_shop');
+  }, [filteredShops, language, selectedShopId, t]);
 
   const computedTotal = useMemo(() => {
     return products.reduce((sum, product) => {
@@ -159,13 +177,17 @@ export default function BillsScreen() {
       return;
     }
 
-    setBills(extractList<AppBill>(result.data));
+    setBills(
+      extractList<AppBill>(result.data).filter(
+        (bill) => String(bill.status || '').toLowerCase() === 'shipped',
+      ),
+    );
   }, [t]);
 
   const loadCatalogData = useCallback(async () => {
     setCatalogLoading(true);
     const [routesResult, shopsResult, productsResult] = await Promise.all([
-      getShopRoutes(),
+      getMyRoutes(),
       getMyShops(),
       getBillProducts(),
     ]);
@@ -375,8 +397,8 @@ export default function BillsScreen() {
               onPress={() => openBillDetails(bill)}>
               <View style={styles.billTopRow}>
                 <View style={styles.billHeaderMain}>
-                  <Text style={styles.billShop}>{getShopLabel(bill.shopId)}</Text>
-                  <Text style={styles.billRoute}>{getRouteLabel(bill.routeId)}</Text>
+                  <Text style={styles.billShop}>{getShopLabel(bill.shopId, language)}</Text>
+                  <Text style={styles.billRoute}>{getRouteLabel(bill.routeId, language)}</Text>
                 </View>
                 <View style={styles.billHeaderSide}>
                   <View style={styles.statusPill}>
@@ -529,8 +551,12 @@ export default function BillsScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               {routes.map((route) => (
                 <Pressable key={route._id} onPress={() => onSelectRoute(route._id)} style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{route.routeName}</Text>
-                  <Text style={styles.pickerItemSubtitle}>{route.cityName}</Text>
+                  <Text style={styles.pickerItemTitle}>
+                    {pickLocalizedValue(language, route.routeName, route.routeNameGujarati)}
+                  </Text>
+                  <Text style={styles.pickerItemSubtitle}>
+                    {pickLocalizedValue(language, route.cityName, route.cityNameGujarati)}
+                  </Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -553,7 +579,9 @@ export default function BillsScreen() {
                     setShopPickerVisible(false);
                   }}
                   style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{shop.shopName}</Text>
+                  <Text style={styles.pickerItemTitle}>
+                    {pickLocalizedValue(language, shop.shopName, shop.shopNameGujarati)}
+                  </Text>
                   <Text style={styles.pickerItemSubtitle}>{shop.shopAddress}</Text>
                 </Pressable>
               ))}
@@ -574,8 +602,8 @@ export default function BillsScreen() {
               <>
                 <View style={styles.detailHeader}>
                   <View style={styles.detailHeaderCopy}>
-                    <Text style={styles.detailTitle}>{getShopLabel(detailBill.shopId)}</Text>
-                    <Text style={styles.detailSubtitle}>{getRouteLabel(detailBill.routeId)}</Text>
+                    <Text style={styles.detailTitle}>{getShopLabel(detailBill.shopId, language)}</Text>
+                    <Text style={styles.detailSubtitle}>{getRouteLabel(detailBill.routeId, language)}</Text>
                   </View>
                   <Pressable onPress={closeBillDetails} style={styles.detailCloseButton}>
                     <Ionicons name="close" size={18} color="#355246" />

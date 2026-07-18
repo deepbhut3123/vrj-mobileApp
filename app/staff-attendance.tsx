@@ -4,7 +4,6 @@ import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -76,20 +75,6 @@ const formatDistance = (distanceMeters: number, locale: string) => {
   }).format(distanceKilometers)} km`;
 };
 
-const formatDay = (value: string, locale: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(locale, {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
-};
-
 const formatTime = (value: string | null, locale: string) => {
   if (!value) {
     return '--';
@@ -119,6 +104,40 @@ const isSameDay = (left: string, right: Date) => {
   );
 };
 
+const getAttendanceButtonLabels = (
+  action: AttendanceAction,
+  language: 'en' | 'gu',
+  t: ReturnType<typeof useI18n>['t'],
+) => {
+  if (language === 'gu') {
+    switch (action) {
+      case 'in':
+        return { primary: t('attendance_in_button'), secondary: 'IN' };
+      case 'out':
+        return { primary: t('attendance_out_button'), secondary: 'OUT' };
+      case 'break-in':
+        return { primary: t('attendance_break_in_button'), secondary: 'BREAK ON' };
+      case 'break-out':
+        return { primary: t('attendance_break_out_button'), secondary: 'BREAK OFF' };
+      default:
+        return { primary: t('attendance_in_button'), secondary: 'IN' };
+    }
+  }
+
+  switch (action) {
+    case 'in':
+      return { primary: 'IN' };
+    case 'out':
+      return { primary: 'OUT' };
+    case 'break-in':
+      return { primary: 'BREAK ON' };
+    case 'break-out':
+      return { primary: 'BREAK OFF' };
+    default:
+      return { primary: 'IN' };
+  }
+};
+
 export default function StaffAttendanceScreen() {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
@@ -126,28 +145,9 @@ export default function StaffAttendanceScreen() {
   const roleId = Number(user?.roleId ?? 0);
   const isStaff = roleId === 5;
   const locale = language === 'gu' ? 'gu-IN' : 'en-IN';
-  const currentDate = useMemo(() => new Date(), []);
-  const monthOptions = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, index) => ({
-        value: index,
-        label: new Intl.DateTimeFormat(locale, { month: 'short' }).format(new Date(2026, index, 1)),
-      })),
-    [locale],
-  );
-  const yearOptions = useMemo(() => {
-    const currentYear = currentDate.getFullYear();
-    return Array.from({ length: 5 }, (_, index) => currentYear - 2 + index);
-  }, [currentDate]);
-
   const [history, setHistory] = useState<AttendanceEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submittingAction, setSubmittingAction] = useState<AttendanceAction | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
-  const [yearPickerVisible, setYearPickerVisible] = useState(false);
   const [locationChecking, setLocationChecking] = useState(false);
   const [locationAllowed, setLocationAllowed] = useState(!ATTENDANCE_LOCATION_CONFIGURED);
   const [locationDistanceMeters, setLocationDistanceMeters] = useState<number | null>(null);
@@ -156,15 +156,12 @@ export default function StaffAttendanceScreen() {
   const loadHistory = useCallback(async (mode: 'load' | 'refresh' = 'load') => {
     if (!isStaff) {
       setHistory([]);
-      setLoading(false);
       setRefreshing(false);
       return;
     }
 
     if (mode === 'refresh') {
       setRefreshing(true);
-    } else {
-      setLoading(true);
     }
 
     const result = await getStaffAttendanceHistory();
@@ -181,7 +178,6 @@ export default function StaffAttendanceScreen() {
       setHistory([]);
     }
 
-    setLoading(false);
     setRefreshing(false);
   }, [isStaff]);
 
@@ -195,22 +191,6 @@ export default function StaffAttendanceScreen() {
     () => history.find((entry) => isSameDay(entry.date, new Date())) ?? null,
     [history],
   );
-  const filteredHistory = useMemo(
-    () =>
-      history.filter((entry) => {
-        const date = new Date(entry.date);
-        if (Number.isNaN(date.getTime())) {
-          return false;
-        }
-        return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
-      }),
-    [history, selectedMonth, selectedYear],
-  );
-  const selectedMonthLabel = useMemo(
-    () => monthOptions.find((item) => item.value === selectedMonth)?.label ?? '',
-    [monthOptions, selectedMonth],
-  );
-
   const canCheckIn = isStaff && !todayEntry?.checkIn && submittingAction === null;
   const canCheckOut = isStaff && Boolean(todayEntry?.checkIn) && !todayEntry?.checkOut && submittingAction === null;
   const canBreakIn =
@@ -336,10 +316,17 @@ export default function StaffAttendanceScreen() {
   }, [locale, locationAllowed, locationChecking, locationDistanceMeters, locationError, t]);
 
   const handleAttendanceAction = async (action: AttendanceAction) => {
+    if (submittingAction !== null) {
+      return;
+    }
+
+    setSubmittingAction(action);
+
     let coordinates: { latitude: number; longitude: number };
     try {
       coordinates = await getCurrentCoordinates();
     } catch (error) {
+      setSubmittingAction(null);
       const code = error instanceof Error ? error.message : '';
       const message =
         code === 'LOCATION_PERMISSION_DENIED'
@@ -363,6 +350,7 @@ export default function StaffAttendanceScreen() {
       setLocationError(null);
 
       if (!isAllowed) {
+        setSubmittingAction(null);
         Alert.alert(
           t('attendance_alert_title'),
           t('attendance_location_outside', {
@@ -374,7 +362,6 @@ export default function StaffAttendanceScreen() {
       }
     }
 
-    setSubmittingAction(action);
     const result = await markStaffAttendanceWithLocation(action, coordinates);
     setSubmittingAction(null);
 
@@ -383,22 +370,11 @@ export default function StaffAttendanceScreen() {
       return;
     }
 
-    Alert.alert(
-      t('attendance_alert_title'),
-      action === 'in'
-        ? t('attendance_checkin_success')
-        : action === 'out'
-        ? t('attendance_checkout_success')
-        : action === 'break-in'
-        ? t('attendance_breakin_success')
-        : t('attendance_breakout_success'),
-    );
     await loadHistory('refresh');
+    await refreshAttendanceAccess();
   };
 
   const handleRefresh = () => {
-    setSelectedMonth(currentDate.getMonth());
-    setSelectedYear(currentDate.getFullYear());
     void loadHistory('refresh');
     void refreshAttendanceAccess();
   };
@@ -410,6 +386,16 @@ export default function StaffAttendanceScreen() {
   );
 
   const canUseAttendanceButtons = locationAllowed && !locationChecking;
+  const attendanceButtons: {
+    action: AttendanceAction;
+    enabled: boolean;
+    style: object;
+  }[] = [
+    { action: 'in', enabled: canCheckIn, style: styles.actionButtonIn },
+    { action: 'break-in', enabled: canBreakIn, style: styles.actionButtonBreakIn },
+    { action: 'break-out', enabled: canBreakOut, style: styles.actionButtonBreakOut },
+    { action: 'out', enabled: canCheckOut, style: styles.actionButtonOut },
+  ];
 
   if (!isStaff) {
     return (
@@ -434,7 +420,6 @@ export default function StaffAttendanceScreen() {
         showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <Text style={styles.title}>{t('attendance_title')}</Text>
-          <Text style={styles.subtitle}>{t('attendance_subtitle')}</Text>
 
           <View style={[styles.locationCard, locationAllowed ? styles.locationCardAllowed : styles.locationCardBlocked]}>
             <Text style={styles.locationTitle}>{t('attendance_location_status_title')}</Text>
@@ -463,183 +448,37 @@ export default function StaffAttendanceScreen() {
             </View>
           </View>
 
-          <View style={styles.actionRow}>
-            <Pressable
-              disabled={!canCheckIn || !canUseAttendanceButtons}
-              onPress={() => void handleAttendanceAction('in')}
-              style={[
-                styles.actionButton,
-                styles.actionButtonIn,
-                (!canCheckIn || !canUseAttendanceButtons) && styles.buttonDisabled,
-              ]}>
-              {submittingAction === 'in' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.actionButtonText}>{t('attendance_in_button')}</Text>
-              )}
-            </Pressable>
+          <View style={styles.actionGrid}>
+            {attendanceButtons.map((button) => {
+              const labels = getAttendanceButtonLabels(button.action, language, t);
+              const disabled = !button.enabled || !canUseAttendanceButtons;
 
-            <Pressable
-              disabled={!canCheckOut || !canUseAttendanceButtons}
-              onPress={() => void handleAttendanceAction('out')}
-              style={[
-                styles.actionButton,
-                styles.actionButtonOut,
-                (!canCheckOut || !canUseAttendanceButtons) && styles.buttonDisabled,
-              ]}>
-              {submittingAction === 'out' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.actionButtonText}>{t('attendance_out_button')}</Text>
-              )}
-            </Pressable>
+              return (
+                <Pressable
+                  key={button.action}
+                  disabled={disabled}
+                  onPress={() => void handleAttendanceAction(button.action)}
+                  style={[
+                    styles.actionButton,
+                    button.style,
+                    disabled && styles.buttonDisabled,
+                  ]}>
+                  {submittingAction === button.action ? (
+                    <ActivityIndicator color="#173126" />
+                  ) : (
+                    <View style={styles.actionButtonContent}>
+                      <Text style={styles.actionButtonPrimaryText}>{labels.primary}</Text>
+                      {labels.secondary ? (
+                        <Text style={styles.actionButtonSecondaryText}>{labels.secondary}</Text>
+                      ) : null}
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
-
-          <View style={styles.actionRow}>
-            <Pressable
-              disabled={!canBreakIn || !canUseAttendanceButtons}
-              onPress={() => void handleAttendanceAction('break-in')}
-              style={[
-                styles.actionButton,
-                styles.actionButtonBreakIn,
-                (!canBreakIn || !canUseAttendanceButtons) && styles.buttonDisabled,
-              ]}>
-              {submittingAction === 'break-in' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.actionButtonText}>{t('attendance_break_in_button')}</Text>
-              )}
-            </Pressable>
-
-            <Pressable
-              disabled={!canBreakOut || !canUseAttendanceButtons}
-              onPress={() => void handleAttendanceAction('break-out')}
-              style={[
-                styles.actionButton,
-                styles.actionButtonBreakOut,
-                (!canBreakOut || !canUseAttendanceButtons) && styles.buttonDisabled,
-              ]}>
-              {submittingAction === 'break-out' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.actionButtonText}>{t('attendance_break_out_button')}</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.listCard}>
-          <Text style={styles.sectionTitle}>{t('attendance_daywise_title')}</Text>
-          <Text style={styles.sectionSubtitle}>{t('attendance_daywise_subtitle')}</Text>
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>{t('attendance_filter_title')}</Text>
-            <View style={styles.filterControls}>
-              <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.filterSelect}>
-                <Text style={styles.filterSelectLabel}>{t('attendance_filter_month')}</Text>
-                <Text style={styles.filterSelectValue}>{selectedMonthLabel}</Text>
-              </Pressable>
-              <Pressable onPress={() => setYearPickerVisible(true)} style={styles.filterSelect}>
-                <Text style={styles.filterSelectLabel}>{t('attendance_filter_year')}</Text>
-                <Text style={styles.filterSelectValue}>{selectedYear}</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          {loading ? (
-            <View style={styles.loadingWrap}>
-              <ActivityIndicator size="small" color="#0F5D33" />
-            </View>
-          ) : filteredHistory.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
-                {history.length === 0 ? t('attendance_empty_title') : t('attendance_empty_filtered')}
-              </Text>
-              <Text style={styles.emptyText}>
-                {history.length === 0 ? t('attendance_empty_message') : t('attendance_daywise_subtitle')}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.historyList}>
-              {filteredHistory.map((entry) => (
-                <View key={entry._id} style={styles.historyCard}>
-                  <View style={styles.historyHeader}>
-                    <Text style={styles.historyDate}>{formatDay(entry.date, locale)}</Text>
-                    <View style={styles.statusPill}>
-                      <Text style={styles.statusText}>{entry.status || t('attendance_status_present')}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timeGrid}>
-                    <View style={styles.timeBox}>
-                      <Text style={styles.timeLabel}>{t('attendance_in_time')}</Text>
-                      <Text style={styles.timeValue}>{formatTime(entry.checkIn, locale)}</Text>
-                    </View>
-                    <View style={styles.timeBox}>
-                      <Text style={styles.timeLabel}>{t('attendance_out_time')}</Text>
-                      <Text style={styles.timeValue}>{formatTime(entry.checkOut, locale)}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timeGrid}>
-                    <View style={styles.timeBox}>
-                      <Text style={styles.timeLabel}>{t('attendance_break_in_time')}</Text>
-                      <Text style={styles.timeValue}>{formatTime(entry.breakIn ?? null, locale)}</Text>
-                    </View>
-                    <View style={styles.timeBox}>
-                      <Text style={styles.timeLabel}>{t('attendance_break_out_time')}</Text>
-                      <Text style={styles.timeValue}>{formatTime(entry.breakOut ?? null, locale)}</Text>
-                    </View>
-                  </View>
-
-                  {entry.note ? <Text style={styles.noteText}>{entry.note}</Text> : null}
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       </ScrollView>
-
-      <Modal transparent visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setMonthPickerVisible(false)}>
-          <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>{t('attendance_filter_month')}</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {monthOptions.map((item) => (
-                <Pressable
-                  key={item.value}
-                  onPress={() => {
-                    setSelectedMonth(item.value);
-                    setMonthPickerVisible(false);
-                  }}
-                  style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{item.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal transparent visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setYearPickerVisible(false)}>
-          <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>{t('attendance_filter_year')}</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {yearOptions.map((item) => (
-                <Pressable
-                  key={item}
-                  onPress={() => {
-                    setSelectedYear(item);
-                    setYearPickerVisible(false);
-                  }}
-                  style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{item}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -724,33 +563,52 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0B5B35',
   },
-  actionRow: {
-    flexDirection: 'row',
+  actionGrid: {
+    flexDirection: 'column',
     gap: 12,
   },
   actionButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
+    width: '100%',
+    minHeight: 72,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    shadowColor: '#0A2218',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
   actionButtonIn: {
-    backgroundColor: '#0F7A43',
+    backgroundColor: '#3D8B5F',
   },
   actionButtonOut: {
-    backgroundColor: '#C06A18',
+    backgroundColor: '#A86408',
   },
   actionButtonBreakIn: {
-    backgroundColor: '#165FA6',
+    backgroundColor: '#14508E',
   },
   actionButtonBreakOut: {
-    backgroundColor: '#7B3FC7',
+    backgroundColor: '#7E5BB6',
   },
-  actionButtonText: {
+  actionButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  actionButtonPrimaryText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
+    textAlign: 'center',
+  },
+  actionButtonSecondaryText: {
+    color: '#F3F7F5',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   buttonDisabled: {
     opacity: 0.45,

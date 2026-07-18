@@ -99,6 +99,7 @@ type TranslationKey =
   | "auth_login_title"
   | "auth_login_subtitle"
   | "auth_email"
+  | "auth_login_identifier"
   | "auth_password"
   | "auth_forgot_password"
   | "auth_sign_in"
@@ -167,6 +168,10 @@ type TranslationKey =
   | "home_stats_delivery_title"
   | "home_stats_pending_delivery"
   | "home_stats_delivery_complete"
+  | "home_stats_dealer_title"
+  | "home_stats_month_sale"
+  | "home_stats_pending_payment"
+  | "home_stats_dealer_empty"
   | "profile_title"
   | "profile_subtitle"
   | "profile_role"
@@ -184,7 +189,9 @@ type TranslationKey =
   | "routes_modal_edit"
   | "routes_col_no"
   | "routes_col_name"
+  | "routes_col_name_gujarati"
   | "routes_city_name"
+  | "routes_city_name_gujarati"
   | "routes_col_created"
   | "routes_col_actions"
   | "routes_validation_name"
@@ -198,6 +205,7 @@ type TranslationKey =
   | "shops_modal_title"
   | "shops_select_route"
   | "shops_shop_name"
+  | "shops_shop_name_gujarati"
   | "shops_shop_address"
   | "shops_mobile_number"
   | "shops_upload_image"
@@ -287,8 +295,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_today_break_out: "Break Out",
     attendance_in_button: "In",
     attendance_out_button: "Out",
-    attendance_break_in_button: "Break In",
-    attendance_break_out_button: "Break Out",
+    attendance_break_in_button: "Break On",
+    attendance_break_out_button: "Break Off",
     attendance_daywise_title: "Day-wise Attendance",
     attendance_daywise_subtitle: "Pull down to refresh after marking attendance.",
     attendance_empty_title: "No attendance records yet.",
@@ -322,11 +330,12 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     common_close: "Close",
     common_error: "Error",
     common_validation: "Validation",
-    auth_missing_details: "Please enter both email and password.",
+    auth_missing_details: "Please enter email/mobile number and password.",
     auth_login_failed: "Login failed",
     auth_login_title: "Welcome Back",
     auth_login_subtitle: "Sign in to continue",
     auth_email: "Email address",
+    auth_login_identifier: "Email or mobile number",
     auth_password: "Password",
     auth_forgot_password: "Forgot password?",
     auth_sign_in: "Sign In",
@@ -398,6 +407,10 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_stats_delivery_title: "Your Delivery Summary",
     home_stats_pending_delivery: "Pending for Delivery",
     home_stats_delivery_complete: "Delivery Complete",
+    home_stats_dealer_title: "Your Sales Summary",
+    home_stats_month_sale: "Current Month Sale",
+    home_stats_pending_payment: "Pending Payment",
+    home_stats_dealer_empty: "No dealer bills for the selected month.",
     profile_title: "Profile",
     profile_subtitle: "Manage your account",
     profile_role: "Role",
@@ -415,7 +428,9 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     routes_modal_edit: "Edit Route",
     routes_col_no: "No.",
     routes_col_name: "Route Name",
+    routes_col_name_gujarati: "Route Name (Gujarati)",
     routes_city_name: "City Name",
+    routes_city_name_gujarati: "City Name (Gujarati)",
     routes_col_created: "Created",
     routes_col_actions: "Actions",
     routes_validation_name: "Route name is required.",
@@ -429,6 +444,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     shops_modal_title: "Add Shop",
     shops_select_route: "Select route",
     shops_shop_name: "Shop name",
+    shops_shop_name_gujarati: "Shop name (Gujarati)",
     shops_shop_address: "Shop address",
     shops_mobile_number: "Mobile number",
     shops_upload_image: "Take Photo",
@@ -522,8 +538,8 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     attendance_today_break_out: "બ્રેક આઉટ",
     attendance_in_button: "ઇન",
     attendance_out_button: "આઉટ",
-    attendance_break_in_button: "બ્રેક ઇન",
-    attendance_break_out_button: "બ્રેક આઉટ",
+    attendance_break_in_button: "બ્રેક ઓન",
+    attendance_break_out_button: "બ્રેક ઓફ",
     attendance_daywise_title: "દિવસવાર હાજરી",
     attendance_daywise_subtitle: "હાજરી માર્ક કર્યા પછી રિફ્રેશ કરવા માટે નીચે ખેંચો.",
     attendance_empty_title: "હજુ સુધી હાજરી રેકોર્ડ નથી.",
@@ -557,11 +573,12 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     common_close: "બંધ કરો",
     common_error: "ભૂલ",
     common_validation: "ચકાસણી",
-    auth_missing_details: "કૃપા કરીને ઇમેલ અને પાસવર્ડ બંને દાખલ કરો.",
+    auth_missing_details: "કૃપા કરીને ઇમેલ/મોબાઇલ નંબર અને પાસવર્ડ દાખલ કરો.",
     auth_login_failed: "લૉગિન નિષ્ફળ",
     auth_login_title: "ફરીથી સ્વાગત છે",
     auth_login_subtitle: "આગળ વધવા માટે સાઇન ઇન કરો",
     auth_email: "ઇમેલ સરનામું",
+    auth_login_identifier: "ઇમેલ અથવા મોબાઇલ નંબર",
     auth_password: "પાસવર્ડ",
     auth_forgot_password: "પાસવર્ડ ભૂલી ગયા?",
     auth_sign_in: "સાઇન ઇન",
@@ -633,6 +650,10 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_stats_delivery_title: "તમારો ડિલિવરી સારાંશ",
     home_stats_pending_delivery: "ડિલિવરી માટે બાકી",
     home_stats_delivery_complete: "ડિલિવરી પૂર્ણ",
+    home_stats_dealer_title: "તમારો વેચાણ સારાંશ",
+    home_stats_month_sale: "હાલના મહિનાનું વેચાણ",
+    home_stats_pending_payment: "બાકી ચુકવણી",
+    home_stats_dealer_empty: "પસંદ કરેલા મહિને કોઈ ડીલર બિલ નથી.",
     profile_title: "પ્રોફાઇલ",
     profile_subtitle: "તમારું એકાઉન્ટ મેનેજ કરો",
     profile_role: "ભૂમિકા",
@@ -650,7 +671,9 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     routes_modal_edit: "રૂટ એડિટ કરો",
     routes_col_no: "ક્રમ",
     routes_col_name: "રૂટ નામ",
+    routes_col_name_gujarati: "રૂટ નામ (ગુજરાતી)",
     routes_city_name: "શહેરનું નામ",
+    routes_city_name_gujarati: "શહેરનું નામ (ગુજરાતી)",
     routes_col_created: "બનાવ્યું",
     routes_col_actions: "ક્રિયાઓ",
     routes_validation_name: "રૂટ નામ જરૂરી છે.",
@@ -664,6 +687,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     shops_modal_title: "દુકાન ઉમેરો",
     shops_select_route: "રૂટ પસંદ કરો",
     shops_shop_name: "દુકાન નામ",
+    shops_shop_name_gujarati: "દુકાન નામ (ગુજરાતી)",
     shops_shop_address: "દુકાન સરનામું",
     shops_mobile_number: "મોબાઇલ નંબર",
     shops_upload_image: "ફોટો લો",

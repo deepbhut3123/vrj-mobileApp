@@ -1,5 +1,16 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +19,8 @@ import {
   type AdminUser,
   type AppBill,
   type AppDealer,
+  type AttendanceEntry,
+  type DealerBill,
   getAllDealers,
   getAllDealerBills,
   getAllRetailerBills,
@@ -33,6 +46,56 @@ const getBillTotal = (bill: AppBill) => {
   return Number.isFinite(total) ? total : 0;
 };
 
+const getDealerBillTotal = (bill: DealerBill) => {
+  const total = Number(bill.totalAmount ?? 0);
+  return Number.isFinite(total) ? total : 0;
+};
+
+const getDealerStoredPendingPayment = (dealer: AppDealer | null) => {
+  if (!dealer || dealer.pendingPayment === undefined || dealer.pendingPayment === null) {
+    return null;
+  }
+
+  const pendingPayment = Number(dealer.pendingPayment);
+  return Number.isFinite(pendingPayment) ? Math.max(pendingPayment, 0) : null;
+};
+
+const getDealerBillPendingPayment = (bill: DealerBill) => {
+  const directPendingFields = [
+    bill.pendingAmount,
+    bill.pendingPayment,
+    bill.balanceAmount,
+    bill.dueAmount,
+    bill.remainingAmount,
+    bill.outstandingAmount,
+    bill.unpaidAmount,
+  ];
+
+  for (const value of directPendingFields) {
+    const parsed = Number(value ?? NaN);
+    if (Number.isFinite(parsed)) {
+      return Math.max(parsed, 0);
+    }
+  }
+
+  const paidAmount = Number(bill.paidAmount ?? NaN);
+  if (Number.isFinite(paidAmount)) {
+    return Math.max(getDealerBillTotal(bill) - paidAmount, 0);
+  }
+
+  return 0;
+};
+
+const getDealerBillDate = (bill: DealerBill) => {
+  const referenceDate =
+    (typeof bill.billDate === 'string' && bill.billDate) ||
+    (typeof bill.createdAt === 'string' && bill.createdAt) ||
+    '';
+
+  const parsed = new Date(referenceDate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const isCurrentYearBill = (bill: AppBill) => {
   const referenceDate =
     (typeof bill.createdAt === 'string' && bill.createdAt) ||
@@ -45,20 +108,166 @@ const isCurrentYearBill = (bill: AppBill) => {
   return parsed.getFullYear() === new Date().getFullYear();
 };
 
-const asCurrency = (value: number) => `Rs. ${Math.round(value).toLocaleString('en-IN')}`;
+const asCurrency = (value: number) =>
+  `Rs. ${new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0,
+  }).format(Math.round(value))}`;
+
+const formatDay = (value: string, _locale: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+
+  return `${day} / ${month} / ${year}`;
+};
+
+const parseAttendanceDateTime = (dateValue: string, timeValue: string | null | undefined) => {
+  if (!timeValue) {
+    return null;
+  }
+
+  const directDate = new Date(timeValue);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  const normalizedDate = String(dateValue || '').trim();
+  const normalizedTime = String(timeValue).trim().toUpperCase();
+  const match = normalizedTime.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/);
+
+  if (!normalizedDate || !match) {
+    return null;
+  }
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3];
+
+  if (meridiem === 'AM' && hours === 12) {
+    hours = 0;
+  } else if (meridiem === 'PM' && hours !== 12) {
+    hours += 12;
+  }
+
+  const composed = new Date(`${normalizedDate}T00:00:00`);
+  if (Number.isNaN(composed.getTime())) {
+    return null;
+  }
+
+  composed.setHours(hours, minutes, 0, 0);
+  return composed;
+};
+
+const getEntryWorkedHours = (entry: {
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  breakIn?: string | null;
+  breakOut?: string | null;
+}) => {
+  if (!entry.checkIn || !entry.checkOut) {
+    return 0;
+  }
+
+  const checkInAt = parseAttendanceDateTime(entry.date, entry.checkIn);
+  const checkOutAt = parseAttendanceDateTime(entry.date, entry.checkOut);
+
+  if (!checkInAt || !checkOutAt) {
+    return 0;
+  }
+
+  const checkInTime = checkInAt.getTime();
+  const checkOutTime = checkOutAt.getTime();
+  if (checkOutTime <= checkInTime) {
+    return 0;
+  }
+
+  let workedMs = checkOutTime - checkInTime;
+
+  if (entry.breakIn && entry.breakOut) {
+    const breakInAt = parseAttendanceDateTime(entry.date, entry.breakIn);
+    const breakOutAt = parseAttendanceDateTime(entry.date, entry.breakOut);
+    if (breakInAt && breakOutAt) {
+      const breakInTime = breakInAt.getTime();
+      const breakOutTime = breakOutAt.getTime();
+      if (breakOutTime > breakInTime) {
+      workedMs -= breakOutTime - breakInTime;
+      }
+    }
+  }
+
+  return Math.max(workedMs, 0) / (1000 * 60 * 60);
+};
+
+const formatWorkedTime = (hours: number) => {
+  if (hours <= 0) {
+    return '--';
+  }
+
+  const roundedMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(roundedMinutes / 60);
+  const minutes = roundedMinutes % 60;
+
+  if (wholeHours === 0) {
+    return `${minutes}m`;
+  }
+
+  if (minutes === 0) {
+    return `${wholeHours}h`;
+  }
+
+  return `${wholeHours}h ${minutes}m`;
+};
+
+const formatAttendanceTime = (
+  dateValue: string,
+  timeValue: string | null | undefined,
+  locale: string,
+) => {
+  if (!timeValue) {
+    return '--';
+  }
+
+  const parsed = parseAttendanceDateTime(dateValue, timeValue);
+  if (!parsed) {
+    return String(timeValue);
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(parsed);
+};
 
 export default function HomeScreen() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const user = getCurrentUser();
   const roleId = Number(user?.roleId ?? 0);
   const isAdmin = roleId === 1;
+  const isDealer = roleId === 3;
   const isStaff = roleId === 5;
   const isDeliveryMan = roleId === 6;
-  const homeVariant = isAdmin ? 'admin' : isStaff ? 'staff' : isDeliveryMan ? 'delivery' : 'user';
+  const homeVariant = isAdmin ? 'admin' : isDealer ? 'dealer' : isStaff ? 'staff' : isDeliveryMan ? 'delivery' : 'user';
   const firstName = (user?.name ?? 'User').split(' ')[0];
+  const locale = language === 'gu' ? 'gu-IN' : 'en-IN';
+  const currentDate = useMemo(() => new Date(), []);
   const insets = useSafeAreaInsets();
   const [loadingStats, setLoadingStats] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceEntry[]>([]);
+  const [dealerBills, setDealerBills] = useState<DealerBill[]>([]);
+  const [dealerPendingPaymentAmount, setDealerPendingPaymentAmount] = useState(0);
+  const [selectedAttendanceEntry, setSelectedAttendanceEntry] = useState<AttendanceEntry | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
   const [stats, setStats] = useState({
     shops: 0,
     routes: 0,
@@ -71,6 +280,19 @@ export default function HomeScreen() {
     retailerCount: 0,
     dealerCount: 0,
   });
+
+  const monthOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        value: index,
+        label: new Intl.DateTimeFormat(locale, { month: 'short' }).format(new Date(2026, index, 1)),
+      })),
+    [locale],
+  );
+  const yearOptions = useMemo(() => {
+    const currentYear = currentDate.getFullYear();
+    return Array.from({ length: 5 }, (_, index) => currentYear - 2 + index);
+  }, [currentDate]);
 
   const getCountFromResult = (result: { ok: boolean; data?: unknown }) => {
     if (!result.ok || !result.data || typeof result.data !== 'object' || !('data' in result.data)) {
@@ -86,6 +308,10 @@ export default function HomeScreen() {
       setRefreshing(true);
     } else {
       setLoadingStats(true);
+    }
+
+    if (!isDealer) {
+      setDealerPendingPaymentAmount(0);
     }
 
     if (isAdmin) {
@@ -118,26 +344,63 @@ export default function HomeScreen() {
         retailerCount: allRetailers.length,
         dealerCount: allDealers.length,
       });
-    } else if (isStaff) {
-      const [dealerBillsResult, attendanceResult] = await Promise.all([
+    } else if (isDealer) {
+      const [dealerBillsResult, dealersResult] = await Promise.all([
         getAllDealerBills(),
-        getStaffAttendanceHistory(),
+        getAllDealers(),
       ]);
-      const attendanceCount =
+      const dealerBillsRows = extractList<DealerBill>(dealerBillsResult.data);
+      const dealerRows = extractList<AppDealer>(dealersResult.data);
+      const dealerApiPendingValues = dealerRows
+        .map((dealer) => getDealerStoredPendingPayment(dealer))
+        .filter((value): value is number => value !== null);
+      const dealerApiPendingPayment = dealerApiPendingValues.reduce((sum, value) => sum + value, 0);
+      const billFallbackPendingPayment = dealerBillsRows.reduce(
+        (sum, bill) => sum + getDealerBillPendingPayment(bill),
+        0,
+      );
+
+      setDealerBills(dealerBillsRows);
+      setDealerPendingPaymentAmount(
+        dealerApiPendingValues.length > 0 ? dealerApiPendingPayment : billFallbackPendingPayment,
+      );
+      setStats({
+        shops: 0,
+        routes: 0,
+        bills: 0,
+        dealerBills: dealerBillsRows.length,
+        attendanceDays: 0,
+        deliveredBills: 0,
+        pendingDeliveryBills: 0,
+        totalRevenue: 0,
+        retailerCount: 0,
+        dealerCount: 0,
+      });
+    } else if (isStaff) {
+      const attendanceResult = await getStaffAttendanceHistory();
+      const attendanceRows =
         attendanceResult.ok &&
         attendanceResult.data &&
         typeof attendanceResult.data === 'object' &&
         'data' in attendanceResult.data &&
         Array.isArray(attendanceResult.data.data)
-          ? attendanceResult.data.data.length
-          : 0;
+          ? (attendanceResult.data.data as AttendanceEntry[])
+          : [];
+
+      const sortedAttendanceRows = [...attendanceRows].sort((left, right) => {
+        const leftTime = new Date(left.date).getTime();
+        const rightTime = new Date(right.date).getTime();
+        return rightTime - leftTime;
+      });
+
+      setAttendanceHistory(sortedAttendanceRows);
 
       setStats({
         shops: 0,
         routes: 0,
         bills: 0,
-        dealerBills: getCountFromResult(dealerBillsResult),
-        attendanceDays: attendanceCount,
+        dealerBills: 0,
+        attendanceDays: sortedAttendanceRows.length,
         deliveredBills: 0,
         pendingDeliveryBills: 0,
         totalRevenue: 0,
@@ -190,12 +453,98 @@ export default function HomeScreen() {
 
     setLoadingStats(false);
     setRefreshing(false);
-  }, [isAdmin, isStaff, isDeliveryMan]);
+  }, [isAdmin, isDealer, isStaff, isDeliveryMan]);
 
   useFocusEffect(
     useCallback(() => {
       void loadStats('load');
     }, [loadStats]),
+  );
+
+  const selectedMonthLabel = useMemo(
+    () => monthOptions.find((item) => item.value === selectedMonth)?.label ?? '',
+    [monthOptions, selectedMonth],
+  );
+  const filteredDealerBills = useMemo(
+    () =>
+      dealerBills.filter((bill) => {
+        const billDate = getDealerBillDate(bill);
+        if (!billDate) {
+          return false;
+        }
+
+        return billDate.getMonth() === selectedMonth && billDate.getFullYear() === selectedYear;
+      }),
+    [dealerBills, selectedMonth, selectedYear],
+  );
+  const dealerMonthSale = useMemo(
+    () => filteredDealerBills.reduce((sum, bill) => sum + getDealerBillTotal(bill), 0),
+    [filteredDealerBills],
+  );
+  const dealerPendingPayment = useMemo(
+    () => dealerPendingPaymentAmount,
+    [dealerPendingPaymentAmount],
+  );
+  const filteredAttendanceHistory = useMemo(
+    () =>
+      attendanceHistory.filter((entry) => {
+        const date = new Date(entry.date);
+        if (Number.isNaN(date.getTime())) {
+          return false;
+        }
+
+        return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
+      }),
+    [attendanceHistory, selectedMonth, selectedYear],
+  );
+  const attendanceDaysCount = useMemo(
+    () => filteredAttendanceHistory.filter((entry) => Boolean(entry.checkIn)).length,
+    [filteredAttendanceHistory],
+  );
+  const selectedMonthDays = useMemo(
+    () => new Date(selectedYear, selectedMonth + 1, 0).getDate(),
+    [selectedMonth, selectedYear],
+  );
+  const salaryPerHour = useMemo(() => {
+    if (typeof user?.salary === 'number' && Number.isFinite(user.salary)) {
+      return user.salary;
+    }
+
+    if (typeof user?.salaryPerHour === 'number' && Number.isFinite(user.salaryPerHour)) {
+      return user.salaryPerHour;
+    }
+
+    if (typeof user?.salaryPerDay === 'number' && Number.isFinite(user.salaryPerDay)) {
+      return user.salaryPerDay / 8;
+    }
+
+    if (typeof user?.salary === 'number' && Number.isFinite(user.salary) && selectedMonthDays > 0) {
+      return user.salary / (selectedMonthDays * 8);
+    }
+
+    return 0;
+  }, [selectedMonthDays, user?.salary, user?.salaryPerDay, user?.salaryPerHour]);
+  const staffRows = useMemo(
+    () =>
+      filteredAttendanceHistory.map((entry) => {
+        const workedHours = getEntryWorkedHours(entry);
+        const earnedSalary = workedHours * salaryPerHour;
+
+        return {
+          ...entry,
+          workedHours,
+          earnedSalary,
+        };
+      }),
+    [filteredAttendanceHistory, salaryPerHour],
+  );
+  const totalWorkedHours = useMemo(
+    () => staffRows.reduce((sum, entry) => sum + entry.workedHours, 0),
+    [staffRows],
+  );
+  const totalEarnedSalary = useMemo(
+    () => staffRows.reduce((sum, entry) => sum + entry.earnedSalary, 0),
+    [staffRows],
   );
 
   return (
@@ -265,74 +614,310 @@ export default function HomeScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void loadStats('refresh')} tintColor="#0F5D33" />
           }>
-          <>
-            <View style={styles.heroCard}>
-            <Image source={require('../assets/images/image.png')} style={styles.logo} resizeMode="contain" />
-            <Text style={styles.title}>{t('home_welcome_title')}</Text>
-            <Text style={styles.subtitle}>{t('home_welcome_message', { name: firstName })}</Text>
-            <Text style={styles.roleText}>{getRoleLabel(user?.roleId)}</Text>
-          </View>
+          {isStaff ? (
+            <>
+              <View style={styles.staffHeroCard}>
+                <Text style={styles.staffHeroEyebrow}>Staff Dashboard</Text>
+                <Text style={styles.staffHeroTitle}>Hello, {firstName}</Text>
 
-            <View style={styles.statsSection}>
-              <Text style={styles.statsTitle}>
-                {isStaff
-                  ? t('home_stats_staff_title')
-                  : isDeliveryMan
-                  ? t('home_stats_delivery_title')
-                  : t('home_stats_user_title')}
-              </Text>
+                <View style={styles.staffFilterRow}>
+                  <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.staffFilterSelect}>
+                    <Text style={styles.staffFilterLabel}>Month</Text>
+                    <Text style={styles.staffFilterValue}>{selectedMonthLabel}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setYearPickerVisible(true)} style={styles.staffFilterSelect}>
+                    <Text style={styles.staffFilterLabel}>Year</Text>
+                    <Text style={styles.staffFilterValue}>{selectedYear}</Text>
+                  </Pressable>
+                </View>
+              </View>
 
               {loadingStats ? (
-                <View style={styles.statsLoading}>
-                  <ActivityIndicator size="small" color="#0F5D33" />
+                <View style={styles.statsSection}>
+                  <View style={styles.statsLoading}>
+                    <ActivityIndicator size="small" color="#0F5D33" />
+                  </View>
                 </View>
               ) : (
-                <View style={styles.statsGrid}>
-                  {isStaff ? (
-                    <>
-                      {/* Hide dealer bills box on the home tab for staff without removing any dealer code. */}
-                      {/* <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.dealerBills}</Text>
-                        <Text style={styles.statLabel}>Dealer Bills</Text>
-                      </View> */}
-                      <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.attendanceDays}</Text>
-                        <Text style={styles.statLabel}>{t('home_stats_attendance_days')}</Text>
+                <>
+                  <View style={styles.staffSummaryRow}>
+                    <View style={styles.staffMetricCard}>
+                      <Text style={styles.staffSummaryLabel}>Attendance Days</Text>
+                      <Text style={styles.staffSummaryValue}>{attendanceDaysCount}</Text>
+                    </View>
+                    <View style={styles.staffMetricCard}>
+                      <Text style={styles.staffSummaryLabel}>Salary</Text>
+                      <Text style={styles.staffSummarySalary}>{asCurrency(totalEarnedSalary)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.staffInsightRow}>
+                    <View style={styles.staffMetricCard}>
+                      <Text style={styles.staffInfoLabelDark}>Total Hours</Text>
+                      <Text style={styles.staffInfoValueDark}>{formatWorkedTime(totalWorkedHours)}</Text>
+                    </View>
+                    <View style={styles.staffMetricCard}>
+                      <Text style={styles.staffInfoLabelDark}>Hourly Rate</Text>
+                      <Text style={styles.staffInfoValueDark}>
+                        {salaryPerHour > 0 ? `${asCurrency(salaryPerHour)}` : '--'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.staffTableCard}>
+                    <View style={styles.staffTableHeader}>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableDateColumn]}>Date</Text>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableTimeColumn]}>Total Time</Text>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableSalaryColumn]}>Salary</Text>
+                    </View>
+
+                    {staffRows.length === 0 ? (
+                      <View style={styles.staffEmptyState}>
+                        <Text style={styles.staffEmptyTitle}>No attendance for selected month.</Text>
                       </View>
-                    </>
-                  ) : isDeliveryMan ? (
-                    <>
-                      <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.pendingDeliveryBills}</Text>
-                        <Text style={styles.statLabel}>{t('home_stats_pending_delivery')}</Text>
+                    ) : (
+                      <View style={styles.staffTableBody}>
+                        {staffRows.map((entry) => (
+                          <Pressable
+                            key={entry._id}
+                            onPress={() => setSelectedAttendanceEntry(entry)}
+                            style={styles.staffTableRow}>
+                            <Text style={[styles.staffTableCell, styles.staffTableDateColumn]}>
+                              {formatDay(entry.date, locale)}
+                            </Text>
+                            <Text style={[styles.staffTableCell, styles.staffTableTimeColumn]}>
+                              {formatWorkedTime(entry.workedHours)}
+                            </Text>
+                            <Text style={[styles.staffTableCell, styles.staffTableSalaryColumn]}>
+                              {asCurrency(entry.earnedSalary)}
+                            </Text>
+                          </Pressable>
+                        ))}
                       </View>
-                      <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.deliveredBills}</Text>
-                        <Text style={styles.statLabel}>{t('home_stats_delivery_complete')}</Text>
-                      </View>
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.shops}</Text>
-                        <Text style={styles.statLabel}>{t('home_stats_my_shops')}</Text>
-                      </View>
-                      <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{stats.routes}</Text>
-                        <Text style={styles.statLabel}>{t('routes_title')}</Text>
-                      </View>
-                      <View style={styles.statCardWide}>
-                        <Text style={styles.statValue}>{stats.bills}</Text>
-                        <Text style={styles.statLabel}>{t('bills_title')}</Text>
-                      </View>
-                    </>
-                  )}
-                </View>
+                    )}
+                  </View>
+                </>
               )}
-            </View>
-          </>
+            </>
+          ) : isDealer ? (
+            <>
+              <View style={styles.staffHeroCard}>
+                <Text style={styles.staffHeroEyebrow}>Dealer Dashboard</Text>
+                <Text style={styles.staffHeroTitle}>Hello, {firstName}</Text>
+                <Text style={styles.staffHeroSubtitle}>Track your sales and pending payment month by month.</Text>
+
+                <View style={styles.staffFilterRow}>
+                  <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.staffFilterSelect}>
+                    <Text style={styles.staffFilterLabel}>{t('attendance_filter_month')}</Text>
+                    <Text style={styles.staffFilterValue}>{selectedMonthLabel}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setYearPickerVisible(true)} style={styles.staffFilterSelect}>
+                    <Text style={styles.staffFilterLabel}>{t('attendance_filter_year')}</Text>
+                    <Text style={styles.staffFilterValue}>{selectedYear}</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.statsSection}>
+                <Text style={styles.statsTitle}>{t('home_stats_dealer_title')}</Text>
+
+                {loadingStats ? (
+                  <View style={styles.statsLoading}>
+                    <ActivityIndicator size="small" color="#0F5D33" />
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.statsGrid}>
+                      <View style={styles.dealerStatCard}>
+                        <Text style={styles.statValue}>{asCurrency(dealerMonthSale)}</Text>
+                        <Text style={styles.statLabel}>{t('home_stats_month_sale')}</Text>
+                      </View>
+                      <View style={styles.dealerStatCard}>
+                        <Text style={styles.statValue}>{asCurrency(dealerPendingPayment)}</Text>
+                        <Text style={styles.statLabel}>{t('home_stats_pending_payment')}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.dealerSummaryCard}>
+                      <Text style={styles.dealerSummaryCount}>{filteredDealerBills.length}</Text>
+                      <Text style={styles.dealerSummaryLabel}>{t('tabs_dealer_bills')}</Text>
+                      <Text style={styles.dealerSummaryHint}>
+                        {filteredDealerBills.length === 0
+                          ? t('home_stats_dealer_empty')
+                          : `${selectedMonthLabel} ${selectedYear}`}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.heroCard}>
+                <Image source={require('../assets/images/image.png')} style={styles.logo} resizeMode="contain" />
+                <Text style={styles.title}>{t('home_welcome_title')}</Text>
+                <Text style={styles.subtitle}>{t('home_welcome_message', { name: firstName })}</Text>
+                <Text style={styles.roleText}>{getRoleLabel(user?.roleId)}</Text>
+              </View>
+
+              <View style={styles.statsSection}>
+                <Text style={styles.statsTitle}>
+                  {isDeliveryMan ? t('home_stats_delivery_title') : t('home_stats_user_title')}
+                </Text>
+
+                {loadingStats ? (
+                  <View style={styles.statsLoading}>
+                    <ActivityIndicator size="small" color="#0F5D33" />
+                  </View>
+                ) : (
+                  <View style={styles.statsGrid}>
+                    {isDeliveryMan ? (
+                      <>
+                        <View style={styles.statCard}>
+                          <Text style={styles.statValue}>{stats.pendingDeliveryBills}</Text>
+                          <Text style={styles.statLabel}>{t('home_stats_pending_delivery')}</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                          <Text style={styles.statValue}>{stats.deliveredBills}</Text>
+                          <Text style={styles.statLabel}>{t('home_stats_delivery_complete')}</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.statCard}>
+                          <Text style={styles.statValue}>{stats.shops}</Text>
+                          <Text style={styles.statLabel}>{t('home_stats_my_shops')}</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                          <Text style={styles.statValue}>{stats.routes}</Text>
+                          <Text style={styles.statLabel}>{t('routes_title')}</Text>
+                        </View>
+                        <View style={styles.statCardWide}>
+                          <Text style={styles.statValue}>{stats.bills}</Text>
+                          <Text style={styles.statLabel}>{t('bills_title')}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                )}
+              </View>
+            </>
+          )}
         </ScrollView>
       )}
+
+      <Modal transparent visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setMonthPickerVisible(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>Month</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {monthOptions.map((item) => (
+                <Pressable
+                  key={item.value}
+                  onPress={() => {
+                    setSelectedMonth(item.value);
+                    setMonthPickerVisible(false);
+                  }}
+                  style={styles.pickerItem}>
+                  <Text style={styles.pickerItemTitle}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setYearPickerVisible(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>Year</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {yearOptions.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => {
+                    setSelectedYear(item);
+                    setYearPickerVisible(false);
+                  }}
+                  style={styles.pickerItem}>
+                  <Text style={styles.pickerItemTitle}>{item}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={Boolean(selectedAttendanceEntry)}
+        onRequestClose={() => setSelectedAttendanceEntry(null)}>
+        <Pressable style={styles.detailBackdrop} onPress={() => setSelectedAttendanceEntry(null)}>
+          <Pressable style={styles.detailCard} onPress={() => {}}>
+            <Text style={styles.detailTitle}>
+              {selectedAttendanceEntry ? formatDay(selectedAttendanceEntry.date, locale) : ''}
+            </Text>
+
+            <View style={styles.detailGrid}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>IN</Text>
+                <Text style={styles.detailValue}>
+                  {selectedAttendanceEntry
+                    ? formatAttendanceTime(
+                        selectedAttendanceEntry.date,
+                        selectedAttendanceEntry.checkIn,
+                        locale,
+                      )
+                    : '--'}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>OUT</Text>
+                <Text style={styles.detailValue}>
+                  {selectedAttendanceEntry
+                    ? formatAttendanceTime(
+                        selectedAttendanceEntry.date,
+                        selectedAttendanceEntry.checkOut,
+                        locale,
+                      )
+                    : '--'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.detailGrid}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>BREAK ON</Text>
+                <Text style={styles.detailValue}>
+                  {selectedAttendanceEntry
+                    ? formatAttendanceTime(
+                        selectedAttendanceEntry.date,
+                        selectedAttendanceEntry.breakIn ?? null,
+                        locale,
+                      )
+                    : '--'}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>BREAK OFF</Text>
+                <Text style={styles.detailValue}>
+                  {selectedAttendanceEntry
+                    ? formatAttendanceTime(
+                        selectedAttendanceEntry.date,
+                        selectedAttendanceEntry.breakOut ?? null,
+                        locale,
+                      )
+                    : '--'}
+                </Text>
+              </View>
+            </View>
+
+            <Pressable onPress={() => setSelectedAttendanceEntry(null)} style={styles.detailCloseButton}>
+              <Text style={styles.detailCloseText}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -347,6 +932,197 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     gap: 18,
+  },
+  staffHeroCard: {
+    backgroundColor: '#173F31',
+    borderRadius: 30,
+    padding: 20,
+    overflow: 'hidden',
+    shadowColor: '#0A2218',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  staffHeroEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: '#A9E2C6',
+  },
+  staffHeroTitle: {
+    marginTop: 10,
+    fontSize: 31,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  staffHeroSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#D9EEE4',
+  },
+  staffFilterRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  staffFilterSelect: {
+    flex: 1,
+    minHeight: 62,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    justifyContent: 'center',
+  },
+  staffFilterLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B9D8CB',
+    textTransform: 'uppercase',
+  },
+  staffFilterValue: {
+    marginTop: 4,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  staffSummaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  staffMetricCard: {
+    flex: 1,
+    minHeight: 112,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E1ECE7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 5,
+    justifyContent: 'space-between',
+  },
+  staffSummaryValue: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#0B5B35',
+  },
+  staffSummarySalary: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0B5B35',
+  },
+  staffSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: '#5E7468',
+    letterSpacing: 0.8,
+  },
+  staffInsightRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  staffInfoLabelDark: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: '#5E7468',
+  },
+  staffInfoValueDark: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0B5B35',
+  },
+  staffTableCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#E1ECE7',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+  staffTableTitleRow: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
+  },
+  staffTableTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#163526',
+  },
+  staffTableSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#687A72',
+  },
+  staffTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F7F4',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D6E5DC',
+  },
+  staffTableHeaderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#244434',
+    textTransform: 'uppercase',
+  },
+  staffTableBody: {
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+  },
+  staffTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingVertical: 12,
+    marginTop: 8,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    backgroundColor: '#FBFDFC',
+    borderWidth: 1,
+    borderColor: '#EDF2EF',
+  },
+  staffTableCell: {
+    fontSize: 13,
+    color: '#173126',
+    fontWeight: '600',
+  },
+  staffTableDateColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  staffTableTimeColumn: {
+    flex: 0.9,
+    textAlign: 'center',
+  },
+  staffTableSalaryColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  staffEmptyState: {
+    padding: 22,
+  },
+  staffEmptyTitle: {
+    fontSize: 14,
+    color: '#61736D',
+    textAlign: 'center',
   },
   adminDashboard: {
     flex: 1,
@@ -720,6 +1496,16 @@ const styles = StyleSheet.create({
     padding: 18,
     justifyContent: 'space-between',
   },
+  dealerStatCard: {
+    width: '100%',
+    minHeight: 118,
+    borderRadius: 18,
+    backgroundColor: '#F4FAF7',
+    borderWidth: 1,
+    borderColor: '#DCE9E2',
+    padding: 18,
+    justifyContent: 'space-between',
+  },
   statValue: {
     fontSize: 34,
     fontWeight: '800',
@@ -729,5 +1515,116 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#4A5B66',
+  },
+  dealerSummaryCard: {
+    marginTop: 12,
+    borderRadius: 18,
+    backgroundColor: '#173F31',
+    padding: 18,
+  },
+  dealerSummaryCount: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  dealerSummaryLabel: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#CFE8DB',
+  },
+  dealerSummaryHint: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#A9E2C6',
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(13, 31, 23, 0.28)',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  pickerCard: {
+    maxHeight: '48%',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#DCE9E2',
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#173126',
+    marginBottom: 10,
+  },
+  pickerItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2EF',
+  },
+  pickerItemTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#214836',
+  },
+  detailBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(13, 31, 23, 0.3)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  detailCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E1ECE7',
+  },
+  detailTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#173126',
+    textAlign: 'center',
+  },
+  detailGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  detailItem: {
+    flex: 1,
+    minHeight: 96,
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: '#F4FAF7',
+    borderWidth: 1,
+    borderColor: '#DCE9E2',
+    justifyContent: 'space-between',
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: '#5E7468',
+    letterSpacing: 0.8,
+  },
+  detailValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0B5B35',
+  },
+  detailCloseButton: {
+    marginTop: 18,
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: '#173F31',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailCloseText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

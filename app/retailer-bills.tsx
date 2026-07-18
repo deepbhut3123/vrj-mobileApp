@@ -30,18 +30,37 @@ import {
   getAllRetailerProducts,
   markRetailerBillsAsCompleted,
 } from '@/services/api';
+import { useI18n } from '@/constants/i18n';
 
 const asCurrency = (value: number) => `Rs. ${value.toFixed(2)}`;
 const asTableAmount = (value: number) => value.toFixed(2);
 
-const getRouteLabel = (route: string | AppRoute | undefined) => {
-  if (!route || typeof route === 'string') return 'Unknown route';
-  return [route.routeName, route.cityName].filter(Boolean).join(', ');
+const pickLocalizedValue = (
+  language: 'en' | 'gu',
+  englishValue?: string,
+  gujaratiValue?: string,
+) => {
+  const english = englishValue?.trim() ?? '';
+  const gujarati = gujaratiValue?.trim() ?? '';
+
+  if (language === 'gu') {
+    return gujarati || english;
+  }
+
+  return english || gujarati;
 };
 
-const getShopLabel = (shop: string | AppShop | undefined) => {
+const getRouteLabel = (route: string | AppRoute | undefined, language: 'en' | 'gu') => {
+  if (!route || typeof route === 'string') return 'Unknown route';
+  return [
+    pickLocalizedValue(language, route.routeName, route.routeNameGujarati),
+    pickLocalizedValue(language, route.cityName, route.cityNameGujarati),
+  ].filter(Boolean).join(', ');
+};
+
+const getShopLabel = (shop: string | AppShop | undefined, language: 'en' | 'gu') => {
   if (!shop || typeof shop === 'string') return 'Unknown shop';
-  return shop.shopName;
+  return pickLocalizedValue(language, shop.shopName, shop.shopNameGujarati);
 };
 
 const getCreatedBy = (bill: AppBill) => {
@@ -89,6 +108,7 @@ const sortProductsBySequence = (list: AppProduct[]) =>
   });
 
 export default function RetailerBillsScreen() {
+  const { language, t } = useI18n();
   const insets = useSafeAreaInsets();
   const user = getCurrentUser();
   const isDeliveryMan = user?.roleId === 6;
@@ -120,13 +140,13 @@ export default function RetailerBillsScreen() {
 
   const selectedRouteName = useMemo(() => {
     const route = routes.find((item) => item._id === selectedRouteId);
-    return route ? `${route.routeName}, ${route.cityName}` : 'Select route';
-  }, [routes, selectedRouteId]);
+    return route ? getRouteLabel(route, language) : t('bills_select_route');
+  }, [language, routes, selectedRouteId, t]);
 
   const selectedShopName = useMemo(() => {
     const shop = filteredShops.find((item) => item._id === selectedShopId);
-    return shop ? shop.shopName : 'Select shop';
-  }, [filteredShops, selectedShopId]);
+    return shop ? getShopLabel(shop, language) : t('bills_select_shop');
+  }, [filteredShops, language, selectedShopId, t]);
 
   const computedTotal = useMemo(() => {
     return products.reduce((sum, product) => {
@@ -141,7 +161,13 @@ export default function RetailerBillsScreen() {
     else setLoading(true);
 
     const result = await getAllRetailerBills();
-    if (result.ok) setBills(extractList<AppBill>(result.data));
+    if (result.ok) {
+      setBills(
+        extractList<AppBill>(result.data).filter(
+          (bill) => String(bill.status || '').toLowerCase() === 'shipped',
+        ),
+      );
+    }
 
     setLoading(false);
     setRefreshing(false);
@@ -267,8 +293,8 @@ export default function RetailerBillsScreen() {
             <Pressable key={bill._id} style={({ pressed }) => [styles.billCard, pressed ? styles.billCardPressed : null]} onPress={() => setDetailBill(bill)}>
               <View style={styles.billTopRow}>
                 <View style={styles.billHeaderMain}>
-                  <Text style={styles.billShop}>{getShopLabel(bill.shopId)}</Text>
-                  <Text style={styles.billRoute}>{getRouteLabel(bill.routeId)}</Text>
+                  <Text style={styles.billShop}>{getShopLabel(bill.shopId, language)}</Text>
+                  <Text style={styles.billRoute}>{getRouteLabel(bill.routeId, language)}</Text>
                 </View>
                 <View style={styles.statusPill}>
                   <Text style={styles.statusPillText}>{bill.status || 'ordered'}</Text>
@@ -315,7 +341,7 @@ export default function RetailerBillsScreen() {
               <Pressable
                 onPress={() => {
                   if (!selectedRouteId) {
-                    Alert.alert('Validation', 'Select route first.');
+                    Alert.alert(t('common_validation'), t('bills_select_route'));
                     return;
                   }
                   setShopPickerVisible(true);
@@ -375,7 +401,7 @@ export default function RetailerBillsScreen() {
       <Modal transparent visible={routePickerVisible} onRequestClose={() => setRoutePickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setRoutePickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>Choose Route</Text>
+            <Text style={styles.pickerTitle}>{t('bills_route_picker_title')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {routes.map((route) => (
                 <Pressable
@@ -386,8 +412,12 @@ export default function RetailerBillsScreen() {
                     setRoutePickerVisible(false);
                   }}
                   style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{route.routeName}</Text>
-                  <Text style={styles.pickerItemSubtitle}>{route.cityName}</Text>
+                  <Text style={styles.pickerItemTitle}>
+                    {pickLocalizedValue(language, route.routeName, route.routeNameGujarati)}
+                  </Text>
+                  <Text style={styles.pickerItemSubtitle}>
+                    {pickLocalizedValue(language, route.cityName, route.cityNameGujarati)}
+                  </Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -398,15 +428,17 @@ export default function RetailerBillsScreen() {
       <Modal transparent visible={shopPickerVisible} onRequestClose={() => setShopPickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setShopPickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>Choose Shop</Text>
+            <Text style={styles.pickerTitle}>{t('bills_shop_picker_title')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {filteredShops.map((shop) => (
                 <Pressable key={shop._id} onPress={() => { setSelectedShopId(shop._id); setShopPickerVisible(false); }} style={styles.pickerItem}>
-                  <Text style={styles.pickerItemTitle}>{shop.shopName}</Text>
+                  <Text style={styles.pickerItemTitle}>
+                    {pickLocalizedValue(language, shop.shopName, shop.shopNameGujarati)}
+                  </Text>
                   <Text style={styles.pickerItemSubtitle}>{shop.shopAddress}</Text>
                 </Pressable>
               ))}
-              {filteredShops.length === 0 ? <Text style={styles.emptyPickerText}>No shops found for this route.</Text> : null}
+              {filteredShops.length === 0 ? <Text style={styles.emptyPickerText}>{t('shops_no_data')}</Text> : null}
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -419,8 +451,8 @@ export default function RetailerBillsScreen() {
               <>
                 <View style={styles.detailHeader}>
                   <View style={styles.detailHeaderCopy}>
-                    <Text style={styles.detailTitle}>{getShopLabel(detailBill.shopId)}</Text>
-                    <Text style={styles.detailSubtitle}>{getRouteLabel(detailBill.routeId)}</Text>
+                    <Text style={styles.detailTitle}>{getShopLabel(detailBill.shopId, language)}</Text>
+                    <Text style={styles.detailSubtitle}>{getRouteLabel(detailBill.routeId, language)}</Text>
                     {!isDeliveryMan ? (
                       <Text style={styles.detailCreatedBy}>Created by {getCreatedBy(detailBill)}</Text>
                     ) : null}

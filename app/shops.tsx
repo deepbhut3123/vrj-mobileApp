@@ -35,15 +35,39 @@ import {
 import { useI18n } from '@/constants/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const getRouteName = (shop: AppShop) => {
+const pickLocalizedValue = (
+  language: 'en' | 'gu',
+  englishValue?: string,
+  gujaratiValue?: string,
+) => {
+  const english = englishValue?.trim() ?? '';
+  const gujarati = gujaratiValue?.trim() ?? '';
+
+  if (language === 'gu') {
+    return gujarati || english;
+  }
+
+  return english || gujarati;
+};
+
+const getRouteName = (shop: AppShop, language: 'en' | 'gu') => {
   if (shop.route && typeof shop.route === 'object' && 'routeName' in shop.route) {
-    return [shop.route.routeName, shop.route.cityName].filter(Boolean).join(', ');
+    return [
+      pickLocalizedValue(language, shop.route.routeName, shop.route.routeNameGujarati),
+      pickLocalizedValue(language, shop.route.cityName, shop.route.cityNameGujarati),
+    ].filter(Boolean).join(', ');
   }
   if (shop.routeId && typeof shop.routeId === 'object' && 'routeName' in shop.routeId) {
-    return [shop.routeId.routeName, shop.routeId.cityName].filter(Boolean).join(', ');
+    return [
+      pickLocalizedValue(language, shop.routeId.routeName, shop.routeId.routeNameGujarati),
+      pickLocalizedValue(language, shop.routeId.cityName, shop.routeId.cityNameGujarati),
+    ].filter(Boolean).join(', ');
   }
   return 'Unknown route';
 };
+
+const getShopDisplayName = (shop: AppShop, language: 'en' | 'gu') =>
+  pickLocalizedValue(language, shop.shopName, shop.shopNameGujarati);
 
 const getShopImage = (shop: AppShop) => shop.shopImage || shop.image || '';
 const asCoordinate = (value: unknown) => {
@@ -98,7 +122,7 @@ const getRouteId = (shop: AppShop) => {
 };
 
 export default function ShopsScreen() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const user = getCurrentUser();
   const insets = useSafeAreaInsets();
 
@@ -114,6 +138,7 @@ export default function ShopsScreen() {
   const [routePickerVisible, setRoutePickerVisible] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [shopName, setShopName] = useState('');
+  const [shopNameGujarati, setShopNameGujarati] = useState('');
   const [shopAddress, setShopAddress] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
   const [shopLatitude, setShopLatitude] = useState<number | null>(null);
@@ -275,6 +300,7 @@ export default function ShopsScreen() {
     setEditingShopId(null);
     setSelectedRouteId('');
     setShopName('');
+    setShopNameGujarati('');
     setShopAddress('');
     setMobileNumber('');
     setShopLatitude(null);
@@ -294,6 +320,7 @@ export default function ShopsScreen() {
     setEditingShopId(shop._id);
     setSelectedRouteId(getRouteId(shop));
     setShopName(shop.shopName);
+    setShopNameGujarati(shop.shopNameGujarati ?? '');
     setShopAddress(shop.shopAddress);
     setMobileNumber(shop.mobileNumber ?? '');
     setShopLatitude(coordinates?.latitude ?? null);
@@ -414,6 +441,7 @@ export default function ShopsScreen() {
 
   const onSaveShop = useCallback(async () => {
     const name = shopName.trim();
+    const gujaratiName = shopNameGujarati.trim();
     const address = shopAddress.trim();
     const mobile = mobileNumber.trim();
     const imageUrl = existingImageUrl.trim();
@@ -461,6 +489,7 @@ export default function ShopsScreen() {
     const payload = {
       routeId: selectedRouteId,
       shopName: name,
+      shopNameGujarati: gujaratiName,
       shopAddress: address,
       mobileNumber: mobile,
       latitude: nextLatitude ?? undefined,
@@ -482,7 +511,7 @@ export default function ShopsScreen() {
       setEditingShopId(null);
     });
     await loadShops();
-  }, [closeShopModal, editingShopId, existingImageUrl, getCurrentCoordinates, imageFile, loadShops, mobileNumber, selectedRouteId, shopAddress, shopLatitude, shopLongitude, shopName, t]);
+  }, [closeShopModal, editingShopId, existingImageUrl, getCurrentCoordinates, imageFile, loadShops, mobileNumber, selectedRouteId, shopAddress, shopLatitude, shopLongitude, shopName, shopNameGujarati, t]);
 
   const onDeleteShop = (id: string) => {
     Alert.alert('Delete Shop', 'Are you sure you want to delete this shop?', [
@@ -558,8 +587,8 @@ export default function ShopsScreen() {
                     <Image source={{ uri: image }} style={styles.shopImage} resizeMode="cover" />
                   </Pressable>
                 ) : null}
-                <Text style={styles.shopName}>{shop.shopName}</Text>
-                <Text style={styles.shopRoute}>{t('shops_route')}: {getRouteName(shop)}</Text>
+                <Text style={styles.shopName}>{getShopDisplayName(shop, language)}</Text>
+                <Text style={styles.shopRoute}>{t('shops_route')}: {getRouteName(shop, language)}</Text>
                 <Text style={styles.shopAddress}>{shop.shopAddress}</Text>
                 {shop.mobileNumber ? <Text style={styles.shopPhone}>Mobile: {shop.mobileNumber}</Text> : null}
                 <View style={styles.cardActions}>
@@ -636,6 +665,17 @@ export default function ShopsScreen() {
                     value={shopName}
                     onChangeText={setShopName}
                     placeholder={t('shops_shop_name')}
+                    style={styles.input}
+                    placeholderTextColor="#8D95A3"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t('shops_shop_name_gujarati')}</Text>
+                  <TextInput
+                    value={shopNameGujarati}
+                    onChangeText={setShopNameGujarati}
+                    placeholder={t('shops_shop_name_gujarati')}
                     style={styles.input}
                     placeholderTextColor="#8D95A3"
                   />

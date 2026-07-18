@@ -21,7 +21,7 @@ import { getCurrentUser, login, verifyLoginCode } from "@/services/api";
 export default function LoginScreen() {
   const { t } = useI18n();
   const user = getCurrentUser();
-  const [email, setEmail] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
@@ -36,13 +36,13 @@ export default function LoginScreen() {
   }, [user]);
 
   const onLogin = async () => {
-    if (!email.trim() || !password.trim()) {
+    if (!loginIdentifier.trim() || !password.trim()) {
       Alert.alert(t("common_validation"), t("auth_missing_details"));
       return;
     }
 
     setSubmitting(true);
-    const result = await login(email.trim(), password);
+    const result = await login(loginIdentifier.trim(), password);
     setSubmitting(false);
 
     if (!result.ok) {
@@ -148,11 +148,11 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder={t("auth_email")}
+                onChangeText={setLoginIdentifier}
+                placeholder={t("auth_login_identifier")}
                 placeholderTextColor="#8D95A3"
                 style={styles.input}
-                value={email}
+                value={loginIdentifier}
               />
 
               <View style={styles.passwordWrap}>

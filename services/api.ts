@@ -11,7 +11,46 @@ const normalizeApiUrl = (url: string) => url.trim().replace(/\/+$/, "");
 
 export const API_BASE_URL = normalizeApiUrl(API_BASE_URL_FROM_ENV);
 const AUTH_STORAGE_KEY = "auth_session_v1";
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const decodeBase64Url = (value: string) => {
+  if (typeof globalThis.atob !== "function") {
+    return null;
+  }
+
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = normalized.length % 4;
+  const padded = padding ? normalized.padEnd(normalized.length + (4 - padding), "=") : normalized;
+
+  try {
+    return globalThis.atob(padded);
+  } catch {
+    return null;
+  }
+};
+
+const getTokenExpiryTimestamp = (token: string) => {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) {
+      return null;
+    }
+
+    const decodedPayload = decodeBase64Url(payload);
+    if (!decodedPayload) {
+      return null;
+    }
+
+    const parsed = JSON.parse(decodedPayload) as { exp?: unknown };
+    const expSeconds = Number(parsed.exp);
+    if (!Number.isFinite(expSeconds) || expSeconds <= 0) {
+      return null;
+    }
+
+    return expSeconds * 1000;
+  } catch {
+    return null;
+  }
+};
 
 let authToken = "";
 let currentUser: AuthUser | null = null;
@@ -21,15 +60,21 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  mobileNumber?: string;
   roleId: number;
   isActive?: boolean;
+  salary?: number | null;
+  salaryPerDay?: number | null;
+  salaryPerHour?: number | null;
 };
 
 export type AppRoute = {
   _id: string;
   userId: string;
   routeName: string;
+  routeNameGujarati?: string;
   cityName: string;
+  cityNameGujarati?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,6 +83,7 @@ export type AdminUser = {
   _id: string;
   name: string;
   email: string;
+  mobileNumber?: string;
   roleId: 1 | 2 | 3;
   isActive?: boolean;
   createdAt: string;
@@ -50,6 +96,7 @@ export type AppDealer = {
   contactNo?: string;
   city?: string;
   margin?: number;
+  pendingPayment?: number;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -57,6 +104,7 @@ export type AppDealer = {
     _id?: string;
     name?: string;
     email?: string;
+    mobileNumber?: string;
     roleId?: number;
   };
 };
@@ -64,6 +112,7 @@ export type AppDealer = {
 export type AppShop = {
   _id: string;
   shopName: string;
+  shopNameGujarati?: string;
   shopAddress: string;
   mobileNumber?: string;
   latitude?: number;
@@ -121,7 +170,7 @@ export type AppBill = {
 };
 
 export type DealerBillItem = {
-  productId?: string | AppProduct | null;
+  productId?: string | AppProduct | DealerProduct | null;
   mrp?: number;
   productName?: string;
   productRate?: number;
@@ -135,6 +184,16 @@ export type DealerBill = {
   billDate: string;
   kattaCount: number;
   totalAmount: number;
+  status?: "ordered" | "shipped" | "completed" | "cancelled";
+  stockDeductedAt?: string | null;
+  paidAmount?: number;
+  pendingAmount?: number;
+  pendingPayment?: number;
+  balanceAmount?: number;
+  dueAmount?: number;
+  remainingAmount?: number;
+  outstandingAmount?: number;
+  unpaidAmount?: number;
   items?: DealerBillItem[];
   dealerId?: {
     _id?: string;
@@ -212,10 +271,28 @@ export const getRoleLabel = (roleId?: number | null) => {
   }
 };
 
+const parseFlexibleNumber = (value: unknown) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.-]/g, "");
+    if (!cleaned) {
+      return null;
+    }
+
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
 const persistAuthSession = async (payload: {
   token: string;
   user: AuthUser;
-  expiresAt: number;
+  expiresAt: number | null;
 }) => {
   await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
 };
@@ -235,7 +312,7 @@ export const hydrateAuthSession = async () => {
     };
 
     const expiresAt = Number(parsed.expiresAt);
-    if (!expiresAt || Date.now() > expiresAt) {
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
       clearAuthToken();
       authHydrated = true;
       return;
@@ -249,7 +326,6 @@ export const hydrateAuthSession = async () => {
       typeof user !== "object" ||
       !("id" in user) ||
       !("name" in user) ||
-      !("email" in user) ||
       !("roleId" in user) ||
       Number.isNaN(Number(user.roleId))
     ) {
@@ -262,8 +338,19 @@ export const hydrateAuthSession = async () => {
     currentUser = {
       id: String(user.id),
       name: String(user.name),
-      email: String(user.email),
+      email: String(user.email ?? ""),
+      mobileNumber: user.mobileNumber ? String(user.mobileNumber) : "",
       roleId: Number(user.roleId),
+      salary:
+        typeof user.salary === "number" && Number.isFinite(user.salary) ? user.salary : null,
+      salaryPerDay:
+        typeof user.salaryPerDay === "number" && Number.isFinite(user.salaryPerDay)
+          ? user.salaryPerDay
+          : null,
+      salaryPerHour:
+        typeof user.salaryPerHour === "number" && Number.isFinite(user.salaryPerHour)
+          ? user.salaryPerHour
+          : null,
     };
   } catch {
     clearAuthToken();
@@ -715,6 +802,8 @@ const extractAllowedUser = (payload: unknown): AuthUser | null => {
 
   const nameRaw = "name" in userData ? (userData as { name?: unknown }).name : undefined;
   const emailRaw = "email" in userData ? (userData as { email?: unknown }).email : undefined;
+  const mobileNumberRaw =
+    "mobileNumber" in userData ? (userData as { mobileNumber?: unknown }).mobileNumber : undefined;
   const roleId = Number(roleRaw);
 
   if (Number.isNaN(roleId)) {
@@ -723,13 +812,52 @@ const extractAllowedUser = (payload: unknown): AuthUser | null => {
 
   const isActiveRaw =
     "isActive" in userData ? (userData as { isActive?: unknown }).isActive : true;
+  const salaryRaw =
+    "salary" in userData
+      ? (userData as { salary?: unknown }).salary
+      : "monthlySalary" in userData
+      ? (userData as { monthlySalary?: unknown }).monthlySalary
+      : "salaryAmount" in userData
+      ? (userData as { salaryAmount?: unknown }).salaryAmount
+      : "fixedSalary" in userData
+      ? (userData as { fixedSalary?: unknown }).fixedSalary
+      : undefined;
+  const salaryPerDayRaw =
+    "salaryPerDay" in userData
+      ? (userData as { salaryPerDay?: unknown }).salaryPerDay
+      : "perDaySalary" in userData
+      ? (userData as { perDaySalary?: unknown }).perDaySalary
+      : "dailySalary" in userData
+      ? (userData as { dailySalary?: unknown }).dailySalary
+      : "daySalary" in userData
+      ? (userData as { daySalary?: unknown }).daySalary
+      : undefined;
+  const salaryPerHourRaw =
+    "salaryPerHour" in userData
+      ? (userData as { salaryPerHour?: unknown }).salaryPerHour
+      : "perHourSalary" in userData
+      ? (userData as { perHourSalary?: unknown }).perHourSalary
+      : "hourRate" in userData
+      ? (userData as { hourRate?: unknown }).hourRate
+      : "hourlyRate" in userData
+      ? (userData as { hourlyRate?: unknown }).hourlyRate
+      : "ratePerHour" in userData
+      ? (userData as { ratePerHour?: unknown }).ratePerHour
+      : undefined;
+  const salary = parseFlexibleNumber(salaryRaw);
+  const salaryPerDay = parseFlexibleNumber(salaryPerDayRaw);
+  const salaryPerHour = parseFlexibleNumber(salaryPerHourRaw);
 
   return {
     id: String(idRaw ?? ""),
     name: String(nameRaw ?? ""),
     email: String(emailRaw ?? ""),
+    mobileNumber: String(mobileNumberRaw ?? ""),
     roleId,
     isActive: isActiveRaw !== false,
+    salary,
+    salaryPerDay,
+    salaryPerHour,
   };
 };
 
@@ -757,10 +885,11 @@ const finalizeAllowedSession = async (payload: LoginResponse) => {
 
   setAuthToken(token);
   setCurrentUser(user);
+  const expiresAt = getTokenExpiryTimestamp(token);
   await persistAuthSession({
     token,
     user,
-    expiresAt: Date.now() + ONE_DAY_MS,
+    expiresAt,
   });
 
   return {
@@ -774,9 +903,13 @@ const finalizeAllowedSession = async (payload: LoginResponse) => {
   } satisfies ApiResult<LoginResponse>;
 };
 
-export const loginuser = async (data: { email: string; password: string }) => {
+export const loginuser = async (data: { identifier: string; password: string }) => {
   try {
-    const response = await API.post<LoginResponse>("/api/auth/login", data);
+    const response = await API.post<LoginResponse>("/api/auth/login", {
+      identifier: data.identifier,
+      email: data.identifier,
+      password: data.password,
+    });
     setCurrentUser(null);
     clearAuthToken();
 
@@ -866,12 +999,22 @@ export const register = async (
   password: string,
 ) => registerUser({ name, email, password, roleId: 2 });
 
-export const login = async (email: string, password: string) =>
-  loginuser({ email, password });
+export const login = async (identifier: string, password: string) =>
+  loginuser({ identifier, password });
 
-export const createRoute = async (routeName: string, cityName: string) => {
+export const createRoute = async (data: {
+  routeName: string;
+  routeNameGujarati?: string;
+  cityName: string;
+  cityNameGujarati?: string;
+}) => {
   try {
-    const response = await API.post("/api/admin/retailer/routes", { routeName, cityName });
+    const response = await API.post("/api/admin/retailer/routes", {
+      routeName: data.routeName,
+      routeNameGujarati: data.routeNameGujarati ?? "",
+      cityName: data.cityName,
+      cityNameGujarati: data.cityNameGujarati ?? "",
+    });
     return asApiResult<{ data: AppRoute }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create route.");
@@ -917,6 +1060,7 @@ export const getAllDealers = async () => {
 export const createShop = async (data: {
   routeId: string;
   shopName: string;
+  shopNameGujarati?: string;
   shopAddress: string;
   mobileNumber: string;
   latitude?: number;
@@ -930,6 +1074,7 @@ export const createShop = async (data: {
       const formData = new FormData();
       formData.append("routeId", data.routeId);
       formData.append("shopName", data.shopName);
+      formData.append("shopNameGujarati", data.shopNameGujarati ?? "");
       formData.append("shopAddress", data.shopAddress);
       formData.append("mobileNumber", data.mobileNumber);
       if (typeof data.latitude === "number") {
@@ -966,6 +1111,7 @@ export const createShop = async (data: {
     const response = await API.post("/api/admin/retailer/shops", {
       routeId: data.routeId,
       shopName: data.shopName,
+      shopNameGujarati: data.shopNameGujarati ?? "",
       shopAddress: data.shopAddress,
       mobileNumber: data.mobileNumber,
       latitude: data.latitude,
@@ -1010,6 +1156,7 @@ export const updateShopById = async (
   data: {
     routeId: string;
     shopName: string;
+    shopNameGujarati?: string;
     shopAddress: string;
     mobileNumber: string;
     latitude?: number;
@@ -1024,6 +1171,7 @@ export const updateShopById = async (
       const formData = new FormData();
       formData.append("routeId", data.routeId);
       formData.append("shopName", data.shopName);
+      formData.append("shopNameGujarati", data.shopNameGujarati ?? "");
       formData.append("shopAddress", data.shopAddress);
       formData.append("mobileNumber", data.mobileNumber);
       if (typeof data.latitude === "number") {
@@ -1060,6 +1208,7 @@ export const updateShopById = async (
     const response = await API.put(`/api/admin/retailer/shops/${id}`, {
       routeId: data.routeId,
       shopName: data.shopName,
+      shopNameGujarati: data.shopNameGujarati ?? "",
       shopAddress: data.shopAddress,
       mobileNumber: data.mobileNumber,
       latitude: data.latitude,
@@ -1222,6 +1371,30 @@ export const createAdminDealerBill = async (data: {
     return asApiResult<{ data: DealerBill }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to create dealer bill.");
+  }
+};
+
+export const updateAdminDealerBill = async (
+  id: string,
+  data: {
+    dealerId: string;
+    billDate: string;
+    kattaCount: number;
+    items: Array<{
+      productId?: string;
+      productName?: string;
+      mrp?: number;
+      productRate?: number;
+      amount?: number;
+      quantity: number;
+    }>;
+  },
+) => {
+  try {
+    const response = await API.put(`/api/admin/dealer/bills/${id}`, data);
+    return asApiResult<{ data: DealerBill }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to update dealer bill.");
   }
 };
 
