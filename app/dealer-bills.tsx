@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -32,7 +33,10 @@ import {
   updateAdminDealerBill,
 } from '@/services/api';
 
-const asCurrency = (value: number) => `Rs. ${Math.round(value).toFixed(0)}`;
+const asCurrency = (value: number) =>
+  `Rs. ${new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0,
+  }).format(Math.round(value))}`;
 const todayValue = () => new Date().toISOString().slice(0, 10);
 const dateFromValue = (value: string) => {
   const parsed = new Date(`${value}T00:00:00`);
@@ -45,6 +49,10 @@ const formatDateForApi = (date: Date) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+const getMonthDateRange = (month: number, year: number) => ({
+  fromDate: formatDateForApi(new Date(year, month, 1)),
+  toDate: formatDateForApi(new Date(year, month + 1, 0)),
+});
 
 const getDealerBillStatus = (bill?: DealerBill | null) =>
   String(bill?.status || 'ordered').toLowerCase();
@@ -78,11 +86,17 @@ const sortDealerProductsBySequence = (list: DealerProduct[]) =>
   });
 
 export default function DealerBillsScreen() {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useLocalSearchParams<{ create?: string }>();
+  const handledCreateParamRef = useRef<string | null>(null);
   const user = getCurrentUser();
   const isDealerUser = Number(user?.roleId ?? 0) === 3;
+  const isCreatePage = pathname === '/dealer-bills-add';
   const shouldHideAmounts = user?.roleId === 5;
+  const currentDate = useMemo(() => new Date(), []);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -94,11 +108,15 @@ export default function DealerBillsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [dealerPickerVisible, setDealerPickerVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
   const [editingBillId, setEditingBillId] = useState('');
   const [selectedDealerId, setSelectedDealerId] = useState('');
   const [billDate, setBillDate] = useState(todayValue());
   const [kattaCount, setKattaCount] = useState('');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
 
   const loadBills = useCallback(async (mode: 'load' | 'refresh' = 'load') => {
     if (mode === 'refresh') {
@@ -107,14 +125,14 @@ export default function DealerBillsScreen() {
       setLoading(true);
     }
 
-    const result = await getAllDealerBills();
+    const result = await getAllDealerBills(getMonthDateRange(selectedMonth, selectedYear));
     if (result.ok) {
       setBills(extractList<DealerBill>(result.data));
     }
 
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [selectedMonth, selectedYear]);
 
   const loadCatalogData = useCallback(async () => {
     setCatalogLoading(true);
@@ -159,6 +177,24 @@ export default function DealerBillsScreen() {
     () => dealers.find((item) => item._id === selectedDealerId) ?? null,
     [dealers, selectedDealerId],
   );
+  const monthOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        value: index,
+        label: new Intl.DateTimeFormat(language === 'gu' ? 'gu-IN' : 'en-IN', { month: 'long' }).format(
+          new Date(2026, index, 1),
+        ),
+      })),
+    [language],
+  );
+  const yearOptions = useMemo(() => {
+    const currentYear = currentDate.getFullYear();
+    return Array.from({ length: 5 }, (_, index) => currentYear - 2 + index);
+  }, [currentDate]);
+  const selectedMonthLabel = useMemo(
+    () => monthOptions.find((item) => item.value === selectedMonth)?.label ?? '',
+    [monthOptions, selectedMonth],
+  );
 
   const computedTotal = useMemo(() => {
     return products.reduce((sum, product) => {
@@ -168,7 +204,7 @@ export default function DealerBillsScreen() {
     }, 0);
   }, [products, quantities]);
 
-  const openCreateModal = async () => {
+  const openCreateModal = useCallback(async () => {
     const catalog = await loadCatalogData();
     if (!catalog) return;
     setEditingBillId('');
@@ -177,7 +213,22 @@ export default function DealerBillsScreen() {
     setKattaCount('');
     setQuantities({});
     setModalVisible(true);
-  };
+  }, [isDealerUser, loadCatalogData]);
+
+  useEffect(() => {
+    const createParam = Array.isArray(params.create) ? params.create[0] : params.create;
+    const createKey = createParam || (isCreatePage ? 'dealer-bills-add' : '');
+    if (
+      createKey &&
+      isDealerUser &&
+      !modalVisible &&
+      !catalogLoading &&
+      handledCreateParamRef.current !== createKey
+    ) {
+      handledCreateParamRef.current = createKey;
+      void openCreateModal();
+    }
+  }, [catalogLoading, isCreatePage, isDealerUser, modalVisible, openCreateModal, params.create]);
 
   const openEditModal = async (bill: DealerBill) => {
     if (getDealerBillStatus(bill) !== 'ordered') {
@@ -215,6 +266,9 @@ export default function DealerBillsScreen() {
     setDealerPickerVisible(false);
     setDatePickerVisible(false);
     setEditingBillId('');
+    if (isCreatePage) {
+      router.replace('/dealer-bills');
+    }
   };
 
   const onDatePicked = (_event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -287,6 +341,124 @@ export default function DealerBillsScreen() {
     Alert.alert(t('dealer_bills_alert_title'), result.message);
   };
 
+  const renderBillForm = (isPage = false) => (
+    <View style={isPage ? styles.formPageCard : styles.modalCard}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>{editingBillId ? 'Edit Dealer Bill' : t('dealer_bills_new_title')}</Text>
+        {!isPage ? (
+          <Pressable onPress={closeCreateModal}>
+            <Text style={styles.closeText}>{t('dealer_bills_close')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <ScrollView
+        style={styles.modalScroll}
+        contentContainerStyle={styles.modalScrollContent}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled">
+        <Text style={styles.fieldLabel}>{t('dealer_bills_field_dealer')}</Text>
+        <Pressable
+          disabled={isDealerUser}
+          onPress={() => setDealerPickerVisible(true)}
+          style={[styles.selectorInput, isDealerUser ? styles.selectorInputLocked : null]}>
+          <Text style={selectedDealer ? styles.selectorValue : styles.selectorPlaceholder}>
+            {selectedDealer ? selectedDealer.dealerName : t('dealer_bills_select_dealer')}
+          </Text>
+        </Pressable>
+
+        <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_date')}</Text>
+        <Pressable onPress={() => setDatePickerVisible(true)} style={styles.dateSelector}>
+          <Text style={styles.selectorValue}>{formatDateForDisplay(billDate)}</Text>
+          <Ionicons name="calendar-outline" size={20} color="#0E6C50" />
+        </Pressable>
+        {datePickerVisible ? (
+          <DateTimePicker
+            value={dateFromValue(billDate)}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={onDatePicked}
+          />
+        ) : null}
+
+        <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_products')}</Text>
+        <View style={styles.productsList}>
+          {products.map((product) => (
+            <View key={product._id} style={styles.productCard}>
+              <View style={styles.productTitleRow}>
+                <Text style={styles.productMrpInline}>{Math.round(product.mrp)}</Text>
+                <Text style={styles.productName}>{product.productName}</Text>
+              </View>
+              {!shouldHideAmounts ? (
+                <View style={styles.productMetaRow}>
+                  <View style={styles.metaPill}>
+                    <Text style={styles.metaLabel}>{t('dealer_bills_rate')}</Text>
+                    <Text style={styles.metaValue}>{asCurrency(product.productRate)}</Text>
+                  </View>
+                  <View style={[styles.metaPill, styles.totalPill]}>
+                    <Text style={styles.metaLabel}>{t('dealer_bills_total')}</Text>
+                    <Text style={[styles.metaValue, styles.totalPillValue]}>
+                      {asCurrency(product.productRate * Number(quantities[product._id] || 0))}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={(value) => onQuantityChange(product._id, value)}
+                placeholder="Quantity"
+                placeholderTextColor="#7A9188"
+                style={styles.quantityInput}
+                value={quantities[product._id] ?? ''}
+              />
+            </View>
+          ))}
+        </View>
+
+        {!isDealerUser ? (
+          <>
+            <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_katta')}</Text>
+            <TextInput
+              keyboardType="number-pad"
+              value={kattaCount}
+              onChangeText={(value) => setKattaCount(value.replace(/[^0-9]/g, ''))}
+              placeholder="0"
+              placeholderTextColor="#7A9188"
+              style={styles.textInput}
+            />
+          </>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.stickyFooter}>
+        {!shouldHideAmounts ? (
+          <View>
+            <Text style={styles.totalLabel}>{t('dealer_bills_bill_total')}</Text>
+            <Text style={styles.totalValue}>{asCurrency(computedTotal)}</Text>
+          </View>
+        ) : <View />}
+        <Pressable disabled={saving} onPress={onSaveBill} style={styles.createButton}>
+          {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.createButtonText}>{editingBillId ? 'Update Bill' : t('dealer_bills_create')}</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  if (isCreatePage) {
+    return (
+      <SafeAreaView style={[styles.page, { paddingTop: insets.top + 8, paddingBottom: insets.bottom }]}>
+        {modalVisible ? (
+          renderBillForm(true)
+        ) : (
+          <View style={styles.formPageLoading}>
+            <ActivityIndicator size="large" color="#0E6C50" />
+          </View>
+        )}
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.page, { paddingTop: insets.top + 8, paddingBottom: insets.bottom }]}>
       <ScrollView
@@ -295,13 +467,14 @@ export default function DealerBillsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void loadBills('refresh')} tintColor="#0E6C50" />
         }>
-        <View style={styles.headerRow}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title}>{t('dealer_bills_title')}</Text>
-            <Text style={styles.subtitle}>{t('dealer_bills_subtitle')}</Text>
-          </View>
-          <Pressable disabled={catalogLoading} onPress={openCreateModal} style={styles.addButton}>
-            <Text style={styles.addButtonText}>{catalogLoading ? '...' : t('dealer_bills_add')}</Text>
+        <View style={styles.filterRow}>
+          <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.filterSelect}>
+            <Text style={styles.filterLabel}>{t('attendance_filter_month')}</Text>
+            <Text style={styles.filterValue}>{selectedMonthLabel}</Text>
+          </Pressable>
+          <Pressable onPress={() => setYearPickerVisible(true)} style={styles.filterSelect}>
+            <Text style={styles.filterLabel}>{t('attendance_filter_year')}</Text>
+            <Text style={styles.filterValue}>{selectedYear}</Text>
           </Pressable>
         </View>
 
@@ -314,48 +487,28 @@ export default function DealerBillsScreen() {
             <Text style={styles.emptyText}>{t('dealer_bills_empty')}</Text>
           </View>
         ) : (
-          bills.map((bill) => (
-            <Pressable
-              key={bill._id}
-              style={({ pressed }) => [styles.billCard, pressed ? styles.billCardPressed : null]}
-              onPress={() => setDetailBill(bill)}>
-              <View style={styles.billTopRow}>
-                <View style={styles.billHeaderMain}>
-                  <Text style={styles.billShop}>{bill.dealerId?.dealerName || t('dealer_bills_unknown_dealer')}</Text>
-                  <Text style={styles.billRoute}>{bill.dealerId?.city || t('dealer_bills_unknown_city')}</Text>
-                </View>
-                <View style={styles.billTopSide}>
-                  {!isDealerUser ? (
-                    <View style={styles.kattaPill}>
-                      <Text style={styles.kattaPillText}>{t('dealer_bills_katta')} {bill.kattaCount ?? 0}</Text>
-                    </View>
-                  ) : null}
-                  <View style={[styles.statusPill, getDealerBillStatus(bill) === 'ordered' ? styles.statusPillOrdered : styles.statusPillShipped]}>
-                    <Text style={[styles.statusPillText, getDealerBillStatus(bill) === 'ordered' ? styles.statusPillTextOrdered : styles.statusPillTextShipped]}>
-                      {getDealerBillStatus(bill)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-              <Text style={styles.createdBy}>
-                {t('dealer_bills_created_by', {
-                  name: bill.userId?.name || bill.userId?.email || t('dealer_bills_unknown_user'),
-                })}
-              </Text>
-              <View style={styles.billSummaryRow}>
-                <View style={styles.billInfoChip}>
-                  <Text style={styles.billInfoLabel}>{t('bills_items')}</Text>
-                  <Text style={styles.billInfoValue}>{bill.items?.length ?? 0}</Text>
-                </View>
+          bills.map((bill) => {
+            const isShippedBill = getDealerBillStatus(bill) === 'shipped';
+
+            return (
+              <Pressable
+                key={bill._id}
+                style={({ pressed }) => [
+                  styles.billCard,
+                  isShippedBill ? styles.billCardShipped : null,
+                  pressed ? styles.billCardPressed : null,
+                ]}
+                onPress={() => setDetailBill(bill)}>
+                <View style={styles.billSingleRow}>
+                <Text style={[styles.billDate, isShippedBill ? styles.billTextShipped : null]}>
+                  {bill.billDate ? new Date(bill.billDate).toLocaleDateString() : '-'}
+                </Text>
                 {!shouldHideAmounts ? (
-                  <View style={[styles.billInfoChip, styles.billTotalChip]}>
-                    <Text style={styles.billInfoLabel}>{t('dealer_bills_total')}</Text>
-                    <Text style={[styles.billInfoValue, styles.billTotalValue]}>{asCurrency(bill.totalAmount)}</Text>
+                  <View style={styles.billTotalInline}>
+                    <Text style={[styles.billTotalLabel, isShippedBill ? styles.billSubTextShipped : null]}>{t('dealer_bills_total')}</Text>
+                    <Text style={[styles.billTotalValue, isShippedBill ? styles.billTextShipped : null]}>{asCurrency(bill.totalAmount)}</Text>
                   </View>
                 ) : null}
-              </View>
-              <View style={styles.billFooterRow}>
-                <Text style={styles.billDate}>{bill.billDate ? new Date(bill.billDate).toLocaleDateString() : '-'}</Text>
                 {getDealerBillStatus(bill) === 'ordered' ? (
                   <Pressable
                     onPress={(event) => {
@@ -366,115 +519,62 @@ export default function DealerBillsScreen() {
                     <Ionicons name="pencil" size={16} color="#0E6C50" />
                     <Text style={styles.editButtonText}>Edit</Text>
                   </Pressable>
-                ) : null}
+                ) : (
+                  <View style={styles.editButtonPlaceholder} />
+                )}
               </View>
             </Pressable>
-          ))
+            );
+          })
         )}
       </ScrollView>
 
       <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={closeCreateModal}>
         <View style={[styles.modalBackdrop, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingBillId ? 'Edit Dealer Bill' : t('dealer_bills_new_title')}</Text>
-              <Pressable onPress={closeCreateModal}>
-                <Text style={styles.closeText}>{t('dealer_bills_close')}</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalScrollContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled">
-              <Text style={styles.fieldLabel}>{t('dealer_bills_field_dealer')}</Text>
-              <Pressable
-                disabled={isDealerUser}
-                onPress={() => setDealerPickerVisible(true)}
-                style={[styles.selectorInput, isDealerUser ? styles.selectorInputLocked : null]}>
-                <Text style={selectedDealer ? styles.selectorValue : styles.selectorPlaceholder}>
-                  {selectedDealer ? selectedDealer.dealerName : t('dealer_bills_select_dealer')}
-                </Text>
-              </Pressable>
-
-              <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_date')}</Text>
-              <Pressable onPress={() => setDatePickerVisible(true)} style={styles.dateSelector}>
-                <Text style={styles.selectorValue}>{formatDateForDisplay(billDate)}</Text>
-                <Ionicons name="calendar-outline" size={20} color="#0E6C50" />
-              </Pressable>
-              {datePickerVisible ? (
-                <DateTimePicker
-                  value={dateFromValue(billDate)}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={onDatePicked}
-                />
-              ) : null}
-
-              <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_products')}</Text>
-              <View style={styles.productsList}>
-                {products.map((product) => (
-                  <View key={product._id} style={styles.productCard}>
-                    <View style={styles.productTitleRow}>
-                      <Text style={styles.productMrpInline}>{Math.round(product.mrp)}</Text>
-                      <Text style={styles.productName}>{product.productName}</Text>
-                    </View>
-                    {!shouldHideAmounts ? (
-                      <View style={styles.productMetaRow}>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaLabel}>{t('dealer_bills_rate')}</Text>
-                          <Text style={styles.metaValue}>{asCurrency(product.productRate)}</Text>
-                        </View>
-                        <View style={[styles.metaPill, styles.totalPill]}>
-                          <Text style={styles.metaLabel}>{t('dealer_bills_total')}</Text>
-                          <Text style={[styles.metaValue, styles.totalPillValue]}>
-                            {asCurrency(product.productRate * Number(quantities[product._id] || 0))}
-                          </Text>
-                        </View>
-                      </View>
-                    ) : null}
-                    <TextInput
-                      keyboardType="number-pad"
-                      onChangeText={(value) => onQuantityChange(product._id, value)}
-                      placeholder="Quantity"
-                      placeholderTextColor="#7A9188"
-                      style={styles.quantityInput}
-                      value={quantities[product._id] ?? ''}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              {!isDealerUser ? (
-                <>
-                  <Text style={[styles.fieldLabel, styles.nextField]}>{t('dealer_bills_field_katta')}</Text>
-                  <TextInput
-                    keyboardType="number-pad"
-                    value={kattaCount}
-                    onChangeText={(value) => setKattaCount(value.replace(/[^0-9]/g, ''))}
-                    placeholder="0"
-                    placeholderTextColor="#7A9188"
-                    style={styles.textInput}
-                  />
-                </>
-              ) : null}
-            </ScrollView>
-
-            <View style={styles.stickyFooter}>
-              {!shouldHideAmounts ? (
-                <View>
-                  <Text style={styles.totalLabel}>{t('dealer_bills_bill_total')}</Text>
-                  <Text style={styles.totalValue}>{asCurrency(computedTotal)}</Text>
-                </View>
-              ) : <View />}
-              <Pressable disabled={saving} onPress={onSaveBill} style={styles.createButton}>
-                {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.createButtonText}>{editingBillId ? 'Update Bill' : t('dealer_bills_create')}</Text>}
-              </Pressable>
-            </View>
-          </View>
+          {renderBillForm()}
         </View>
+      </Modal>
+
+      <Modal transparent visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setMonthPickerVisible(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>{t('attendance_filter_month')}</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {monthOptions.map((month) => (
+                <Pressable
+                  key={month.value}
+                  onPress={() => {
+                    setSelectedMonth(month.value);
+                    setMonthPickerVisible(false);
+                  }}
+                  style={styles.pickerItem}>
+                  <Text style={styles.pickerItemTitle}>{month.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setYearPickerVisible(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>{t('attendance_filter_year')}</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {yearOptions.map((year) => (
+                <Pressable
+                  key={year}
+                  onPress={() => {
+                    setSelectedYear(year);
+                    setYearPickerVisible(false);
+                  }}
+                  style={styles.pickerItem}>
+                  <Text style={styles.pickerItemTitle}>{year}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal transparent visible={dealerPickerVisible} onRequestClose={() => setDealerPickerVisible(false)}>
@@ -507,36 +607,11 @@ export default function DealerBillsScreen() {
               <>
                 <View style={styles.detailHeader}>
                   <View style={styles.detailHeaderCopy}>
-                    <Text style={styles.detailTitle}>{detailBill.dealerId?.dealerName || t('dealer_bills_unknown_dealer')}</Text>
-                    <Text style={styles.detailSubtitle}>{detailBill.dealerId?.city || t('dealer_bills_unknown_city')}</Text>
-                    <Text style={styles.detailCreatedBy}>
-                      {t('dealer_bills_created_by', {
-                        name: detailBill.userId?.name || detailBill.userId?.email || t('dealer_bills_unknown_user'),
-                      })}
-                    </Text>
+                    <Text style={styles.detailTitle}>{t('tabs_dealer_bills')}</Text>
                   </View>
                   <Pressable onPress={() => setDetailBill(null)} style={styles.detailCloseButton}>
                     <Ionicons name="close" size={18} color="#164438" />
                   </Pressable>
-                </View>
-
-                <View style={styles.detailMetaRow}>
-                  {!isDealerUser ? (
-                    <View style={styles.detailMetaChip}>
-                      <Text style={styles.detailMetaLabel}>{t('dealer_bills_katta')}</Text>
-                      <Text style={styles.detailMetaValue}>{detailBill.kattaCount ?? 0}</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.detailMetaChip}>
-                    <Text style={styles.detailMetaLabel}>Status</Text>
-                    <Text style={styles.detailMetaValue}>{getDealerBillStatus(detailBill)}</Text>
-                  </View>
-                  {!shouldHideAmounts ? (
-                    <View style={styles.detailMetaChip}>
-                      <Text style={styles.detailMetaLabel}>{t('dealer_bills_total')}</Text>
-                      <Text style={[styles.detailMetaValue, styles.detailMetaValueTotal]}>{asCurrency(detailBill.totalAmount)}</Text>
-                    </View>
-                  ) : null}
                 </View>
 
                 <ScrollView
@@ -553,27 +628,26 @@ export default function DealerBillsScreen() {
                         ) : null}
                         <Text style={styles.detailItemName}>{item.productName || 'Custom item'}</Text>
                       </View>
-                      <View style={styles.detailItemRow}>
-                        <View style={styles.detailItemStat}>
-                          <Text style={styles.detailItemLabel}>{t('dealer_bills_detail_qty')}</Text>
-                          <Text style={styles.detailItemValue}>{item.quantity ?? 0}</Text>
-                        </View>
-                        {!shouldHideAmounts ? (
-                          <>
-                            <View style={styles.detailItemStat}>
-                              <Text style={styles.detailItemLabel}>{t('dealer_bills_detail_amount')}</Text>
-                              <Text style={styles.detailItemValue}>{asCurrency(Number(item.amount || 0))}</Text>
-                            </View>
-                            <View style={styles.detailItemStat}>
-                              <Text style={styles.detailItemLabel}>{t('dealer_bills_total')}</Text>
-                              <Text style={[styles.detailItemValue, styles.detailItemTotal]}>{asCurrency(Number(item.total || 0))}</Text>
-                            </View>
-                          </>
-                        ) : null}
-                      </View>
+                      <Text style={styles.detailItemCalculation}>
+                        {shouldHideAmounts
+                          ? `${item.quantity ?? 0}`
+                          : `${item.quantity ?? 0} * ${Math.round(Number(item.amount || 0))} = ${asCurrency(Number(item.total || 0))}`}
+                      </Text>
                     </View>
                   ))}
                 </ScrollView>
+                <View style={styles.detailMetaRow}>
+                  <View style={styles.detailMetaChip}>
+                    <Text style={styles.detailMetaLabel}>{t('dealer_bills_katta')}</Text>
+                    <Text style={styles.detailMetaValue}>{detailBill.kattaCount ?? 0}</Text>
+                  </View>
+                  {!shouldHideAmounts ? (
+                    <View style={styles.detailMetaChip}>
+                      <Text style={styles.detailMetaLabel}>{t('dealer_bills_total')}</Text>
+                      <Text style={[styles.detailMetaValue, styles.detailMetaValueTotal]}>{asCurrency(detailBill.totalAmount)}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 {getDealerBillStatus(detailBill) === 'ordered' ? (
                   <Pressable onPress={() => void openEditModal(detailBill)} style={styles.detailEditButton}>
                     <Ionicons name="pencil" size={17} color="#FFFFFF" />
@@ -592,40 +666,32 @@ export default function DealerBillsScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F1F8F4' },
   content: { padding: 20, paddingBottom: 120 },
-  headerRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  headerCopy: { flex: 1 },
-  title: { fontSize: 30, fontWeight: '800', color: '#123D33' },
-  subtitle: { marginTop: 6, fontSize: 15, lineHeight: 22, color: '#5D746C' },
-  addButton: { backgroundColor: '#0E6C50', borderRadius: 16, paddingHorizontal: 16, height: 48, alignItems: 'center', justifyContent: 'center' },
-  addButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  filterRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  filterSelect: { flex: 1, minHeight: 58, borderRadius: 16, borderWidth: 1, borderColor: '#D8E9DF', backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 9, justifyContent: 'center' },
+  filterLabel: { fontSize: 11, fontWeight: '800', color: '#60786F', textTransform: 'uppercase' },
+  filterValue: { marginTop: 3, fontSize: 16, fontWeight: '800', color: '#123D33' },
+  formPageCard: { flex: 1, backgroundColor: '#FAFFFC', paddingHorizontal: 18, paddingTop: 16 },
+  formPageLoading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingWrap: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center' },
   emptyCard: { marginTop: 18, backgroundColor: '#FFFFFF', borderRadius: 22, padding: 24, borderWidth: 1, borderColor: '#D8E9DF' },
   emptyText: { color: '#5D746C', fontSize: 15 },
-  billCard: { marginTop: 12, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#D8E9DF' },
+  billCard: { marginTop: 12, backgroundColor: '#FFFFFF', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#D8E9DF' },
+  billCardShipped: { backgroundColor: '#0B4A34', borderColor: '#0B4A34' },
   billCardPressed: { opacity: 0.96 },
-  billTopRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' },
-  billHeaderMain: { flex: 1, gap: 4 },
-  billShop: { fontSize: 16, fontWeight: '800', color: '#123D33' },
-  billRoute: { color: '#5D746C', fontSize: 13 },
-  createdBy: { marginTop: 10, color: '#5D746C', fontSize: 13 },
-  billTopSide: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' },
+  billSingleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   kattaPill: { backgroundColor: '#E3F3EA', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  kattaPillShipped: { backgroundColor: 'rgba(255, 255, 255, 0.16)' },
   kattaPillText: { color: '#0E6C50', fontSize: 11, fontWeight: '800' },
-  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
-  statusPillOrdered: { backgroundColor: '#FFF7E6', borderColor: '#F3D19E' },
-  statusPillShipped: { backgroundColor: '#E3F3EA', borderColor: '#CDE4D6' },
-  statusPillText: { fontSize: 11, fontWeight: '800', textTransform: 'capitalize' },
-  statusPillTextOrdered: { color: '#A35A00' },
-  statusPillTextShipped: { color: '#0E6C50' },
-  billSummaryRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  billInfoChip: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#DCEBE3', backgroundColor: '#F8FCF9', paddingHorizontal: 12, paddingVertical: 9 },
-  billTotalChip: { backgroundColor: '#E3F3EA', borderColor: '#CDE4D6' },
+  billTotalInline: { flex: 1, minWidth: 0 },
+  billTotalLabel: { fontSize: 11, fontWeight: '700', color: '#60786F', textTransform: 'uppercase' },
   billInfoLabel: { fontSize: 11, fontWeight: '700', color: '#60786F', textTransform: 'uppercase' },
   billInfoValue: { marginTop: 4, color: '#123D33', fontSize: 15, fontWeight: '800' },
-  billTotalValue: { color: '#0E6C50' },
-  billDate: { marginTop: 10, color: '#60786F', fontSize: 12 },
-  billFooterRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  billTotalValue: { marginTop: 2, color: '#0E6C50', fontSize: 18, fontWeight: '800' },
+  billTextShipped: { color: '#FFFFFF' },
+  billSubTextShipped: { color: '#D8F0E5' },
+  billDate: { width: 84, color: '#123D33', fontSize: 16, fontWeight: '800' },
   editButton: { minHeight: 34, borderRadius: 11, backgroundColor: '#E3F3EA', borderWidth: 1, borderColor: '#CDE4D6', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  editButtonPlaceholder: { width: 70 },
   editButtonText: { color: '#0E6C50', fontSize: 12, fontWeight: '800' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(10, 44, 34, 0.48)', justifyContent: 'flex-end' },
   modalCard: { width: '100%', height: '90%', backgroundColor: '#FAFFFC', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 18, paddingTop: 16, overflow: 'hidden' },
@@ -670,8 +736,6 @@ const styles = StyleSheet.create({
   detailHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   detailHeaderCopy: { flex: 1 },
   detailTitle: { fontSize: 20, fontWeight: '800', color: '#123D33' },
-  detailSubtitle: { marginTop: 4, fontSize: 13, color: '#5D746C' },
-  detailCreatedBy: { marginTop: 6, fontSize: 13, color: '#5D746C' },
   detailCloseButton: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#E6F4EC', alignItems: 'center', justifyContent: 'center' },
   detailMetaRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
   detailMetaChip: { flex: 1, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D8E9DF', paddingHorizontal: 12, paddingVertical: 10 },
@@ -684,11 +748,7 @@ const styles = StyleSheet.create({
   detailItemHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6 },
   detailItemName: { fontSize: 16, fontWeight: '800', color: '#123D33' },
   detailItemMrpInline: { fontSize: 14, fontWeight: '800', color: '#0E6C50' },
-  detailItemRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  detailItemStat: { flexGrow: 1, minWidth: '22%', borderRadius: 14, backgroundColor: '#F3FAF6', borderWidth: 1, borderColor: '#DCEBE3', paddingHorizontal: 10, paddingVertical: 9 },
-  detailItemLabel: { fontSize: 11, fontWeight: '700', color: '#60786F', textTransform: 'uppercase' },
-  detailItemValue: { marginTop: 4, fontSize: 14, fontWeight: '800', color: '#123D33' },
-  detailItemTotal: { color: '#0E6C50' },
+  detailItemCalculation: { marginTop: 10, fontSize: 16, fontWeight: '800', color: '#0E6C50' },
   detailEditButton: { marginTop: 12, height: 48, borderRadius: 14, backgroundColor: '#0E6C50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   detailEditButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 });

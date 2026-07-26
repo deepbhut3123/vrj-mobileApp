@@ -12,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useI18n } from '@/constants/i18n';
@@ -29,7 +31,6 @@ import {
   getMyBills,
   getMyRoutes,
   getMyShops,
-  getRoleLabel,
   getStaffAttendanceHistory,
 } from '@/services/api';
 
@@ -204,7 +205,7 @@ const getEntryWorkedHours = (entry: {
   return Math.max(workedMs, 0) / (1000 * 60 * 60);
 };
 
-const formatWorkedTime = (hours: number) => {
+const formatWorkedTime = (hours: number, language: 'en' | 'gu') => {
   if (hours <= 0) {
     return '--';
   }
@@ -212,16 +213,18 @@ const formatWorkedTime = (hours: number) => {
   const roundedMinutes = Math.round(hours * 60);
   const wholeHours = Math.floor(roundedMinutes / 60);
   const minutes = roundedMinutes % 60;
+  const hourSuffix = language === 'gu' ? 'કલાક' : 'h';
+  const minuteSuffix = language === 'gu' ? 'મિ' : 'm';
 
   if (wholeHours === 0) {
-    return `${minutes}m`;
+    return `${minutes}${minuteSuffix}`;
   }
 
   if (minutes === 0) {
-    return `${wholeHours}h`;
+    return `${wholeHours}${hourSuffix}`;
   }
 
-  return `${wholeHours}h ${minutes}m`;
+  return `${wholeHours}${hourSuffix} ${minutes}${minuteSuffix}`;
 };
 
 const formatAttendanceTime = (
@@ -254,8 +257,27 @@ export default function HomeScreen() {
   const isStaff = roleId === 5;
   const isDeliveryMan = roleId === 6;
   const homeVariant = isAdmin ? 'admin' : isDealer ? 'dealer' : isStaff ? 'staff' : isDeliveryMan ? 'delivery' : 'user';
-  const firstName = (user?.name ?? 'User').split(' ')[0];
+  const displayName = user?.name?.trim() || t('home_role_user');
+  const firstName = displayName.split(/\s+/)[0];
   const locale = language === 'gu' ? 'gu-IN' : 'en-IN';
+  const roleLabel = useMemo(() => {
+    switch (roleId) {
+      case 1:
+        return t('home_role_admin');
+      case 2:
+        return t('home_role_retailer');
+      case 3:
+        return t('home_role_dealer');
+      case 4:
+        return t('home_role_salesman');
+      case 5:
+        return t('home_role_staff');
+      case 6:
+        return t('home_role_delivery');
+      default:
+        return t('home_role_user');
+    }
+  }, [roleId, t]);
   const currentDate = useMemo(() => new Date(), []);
   const insets = useSafeAreaInsets();
   const [loadingStats, setLoadingStats] = useState(true);
@@ -285,7 +307,7 @@ export default function HomeScreen() {
     () =>
       Array.from({ length: 12 }, (_, index) => ({
         value: index,
-        label: new Intl.DateTimeFormat(locale, { month: 'short' }).format(new Date(2026, index, 1)),
+        label: new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date(2026, index, 1)),
       })),
     [locale],
   );
@@ -555,9 +577,9 @@ export default function HomeScreen() {
       {isAdmin ? (
         <View style={styles.adminDashboard}>
           <View style={styles.adminHero}>
-            <Text style={styles.adminEyebrow}>Admin Overview</Text>
-            <Text style={styles.adminTitle}>Revenue Snapshot</Text>
-            <Text style={styles.adminSubtitle}>A compact home tab with your top number first.</Text>
+            <Text style={styles.adminEyebrow}>{t('home_admin_overview')}</Text>
+            <Text style={styles.adminTitle}>{t('home_admin_revenue_snapshot')}</Text>
+            <Text style={styles.adminSubtitle}>{t('home_admin_subtitle')}</Text>
           </View>
 
           {loadingStats ? (
@@ -570,9 +592,9 @@ export default function HomeScreen() {
                 <View style={styles.revenueRingOuter}>
                   <View style={styles.revenueRingMiddle}>
                     <View style={styles.revenueRingInner}>
-                      <Text style={styles.revenueRingLabel}>Total Revenue</Text>
+                      <Text style={styles.revenueRingLabel}>{t('home_admin_total_revenue')}</Text>
                       <Text style={styles.revenueRingValue}>{asCurrency(stats.totalRevenue)}</Text>
-                      <Text style={styles.revenueRingHint}>Current year retailer + dealer bills</Text>
+                      <Text style={styles.revenueRingHint}>{t('home_admin_revenue_hint')}</Text>
                     </View>
                   </View>
                 </View>
@@ -581,26 +603,29 @@ export default function HomeScreen() {
               <View style={styles.adminCompactGrid}>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardSoft]}>
                   <Text style={styles.adminMiniValue}>{stats.bills}</Text>
-                  <Text style={styles.adminMiniLabel}>Retailer Bills</Text>
+                  <Text style={styles.adminMiniLabel}>{t('home_admin_retailer_bills')}</Text>
                 </View>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardWarm]}>
                   <Text style={styles.adminMiniValue}>{stats.dealerBills}</Text>
-                  <Text style={styles.adminMiniLabel}>Dealer Bills</Text>
+                  <Text style={styles.adminMiniLabel}>{t('home_admin_dealer_bills')}</Text>
                 </View>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardStrong]}>
                   <Text style={styles.adminMiniValue}>{stats.retailerCount}</Text>
-                  <Text style={styles.adminMiniLabel}>Retailers</Text>
+                  <Text style={styles.adminMiniLabel}>{t('home_admin_retailers')}</Text>
                 </View>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardPeach]}>
                   <Text style={styles.adminMiniValue}>{stats.dealerCount}</Text>
-                  <Text style={styles.adminMiniLabel}>Dealers</Text>
+                  <Text style={styles.adminMiniLabel}>{t('home_admin_dealers')}</Text>
                 </View>
               </View>
 
               <View style={styles.adminFooterPanel}>
-                <Text style={styles.adminFooterTitle}>Quick Summary</Text>
+                <Text style={styles.adminFooterTitle}>{t('home_admin_quick_summary')}</Text>
                 <Text style={styles.adminFooterText}>
-                  {stats.bills + stats.dealerBills} total bills across {stats.retailerCount + stats.dealerCount} active business accounts.
+                  {t('home_admin_quick_summary_text', {
+                    bills: stats.bills + stats.dealerBills,
+                    accounts: stats.retailerCount + stats.dealerCount,
+                  })}
                 </Text>
               </View>
             </>
@@ -617,16 +642,16 @@ export default function HomeScreen() {
           {isStaff ? (
             <>
               <View style={styles.staffHeroCard}>
-                <Text style={styles.staffHeroEyebrow}>Staff Dashboard</Text>
-                <Text style={styles.staffHeroTitle}>Hello, {firstName}</Text>
+                <Text style={styles.staffHeroEyebrow}>{t('home_staff_dashboard')}</Text>
+                <Text style={styles.staffHeroTitle}>{t('home_hello_name', { name: firstName })}</Text>
 
                 <View style={styles.staffFilterRow}>
                   <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.staffFilterSelect}>
-                    <Text style={styles.staffFilterLabel}>Month</Text>
+                    <Text style={styles.staffFilterLabel}>{t('attendance_filter_month')}</Text>
                     <Text style={styles.staffFilterValue}>{selectedMonthLabel}</Text>
                   </Pressable>
                   <Pressable onPress={() => setYearPickerVisible(true)} style={styles.staffFilterSelect}>
-                    <Text style={styles.staffFilterLabel}>Year</Text>
+                    <Text style={styles.staffFilterLabel}>{t('attendance_filter_year')}</Text>
                     <Text style={styles.staffFilterValue}>{selectedYear}</Text>
                   </Pressable>
                 </View>
@@ -642,22 +667,22 @@ export default function HomeScreen() {
                 <>
                   <View style={styles.staffSummaryRow}>
                     <View style={styles.staffMetricCard}>
-                      <Text style={styles.staffSummaryLabel}>Attendance Days</Text>
+                      <Text style={styles.staffSummaryLabel}>{t('home_stats_attendance_days')}</Text>
                       <Text style={styles.staffSummaryValue}>{attendanceDaysCount}</Text>
                     </View>
                     <View style={styles.staffMetricCard}>
-                      <Text style={styles.staffSummaryLabel}>Salary</Text>
+                      <Text style={styles.staffSummaryLabel}>{t('home_staff_salary')}</Text>
                       <Text style={styles.staffSummarySalary}>{asCurrency(totalEarnedSalary)}</Text>
                     </View>
                   </View>
 
                   <View style={styles.staffInsightRow}>
                     <View style={styles.staffMetricCard}>
-                      <Text style={styles.staffInfoLabelDark}>Total Hours</Text>
-                      <Text style={styles.staffInfoValueDark}>{formatWorkedTime(totalWorkedHours)}</Text>
+                      <Text style={styles.staffInfoLabelDark}>{t('home_staff_total_hours')}</Text>
+                      <Text style={styles.staffInfoValueDark}>{formatWorkedTime(totalWorkedHours, language)}</Text>
                     </View>
                     <View style={styles.staffMetricCard}>
-                      <Text style={styles.staffInfoLabelDark}>Hourly Rate</Text>
+                      <Text style={styles.staffInfoLabelDark}>{t('home_staff_hourly_rate')}</Text>
                       <Text style={styles.staffInfoValueDark}>
                         {salaryPerHour > 0 ? `${asCurrency(salaryPerHour)}` : '--'}
                       </Text>
@@ -666,14 +691,14 @@ export default function HomeScreen() {
 
                   <View style={styles.staffTableCard}>
                     <View style={styles.staffTableHeader}>
-                      <Text style={[styles.staffTableHeaderText, styles.staffTableDateColumn]}>Date</Text>
-                      <Text style={[styles.staffTableHeaderText, styles.staffTableTimeColumn]}>Total Time</Text>
-                      <Text style={[styles.staffTableHeaderText, styles.staffTableSalaryColumn]}>Salary</Text>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableDateColumn]}>{t('dealer_statement_date')}</Text>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableTimeColumn]}>{t('home_staff_total_time')}</Text>
+                      <Text style={[styles.staffTableHeaderText, styles.staffTableSalaryColumn]}>{t('home_staff_salary')}</Text>
                     </View>
 
                     {staffRows.length === 0 ? (
                       <View style={styles.staffEmptyState}>
-                        <Text style={styles.staffEmptyTitle}>No attendance for selected month.</Text>
+                        <Text style={styles.staffEmptyTitle}>{t('home_staff_empty_month')}</Text>
                       </View>
                     ) : (
                       <View style={styles.staffTableBody}>
@@ -686,7 +711,7 @@ export default function HomeScreen() {
                               {formatDay(entry.date, locale)}
                             </Text>
                             <Text style={[styles.staffTableCell, styles.staffTableTimeColumn]}>
-                              {formatWorkedTime(entry.workedHours)}
+                              {formatWorkedTime(entry.workedHours, language)}
                             </Text>
                             <Text style={[styles.staffTableCell, styles.staffTableSalaryColumn]}>
                               {asCurrency(entry.earnedSalary)}
@@ -702,9 +727,8 @@ export default function HomeScreen() {
           ) : isDealer ? (
             <>
               <View style={styles.staffHeroCard}>
-                <Text style={styles.staffHeroEyebrow}>Dealer Dashboard</Text>
-                <Text style={styles.staffHeroTitle}>Hello, {firstName}</Text>
-                <Text style={styles.staffHeroSubtitle}>Track your sales and pending payment month by month.</Text>
+                <Text style={styles.staffHeroEyebrow}>{t('home_dealer_dashboard')}</Text>
+                <Text style={styles.staffHeroTitle}>{t('home_hello_name', { name: displayName })}</Text>
 
                 <View style={styles.staffFilterRow}>
                   <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.staffFilterSelect}>
@@ -729,27 +753,35 @@ export default function HomeScreen() {
                   <>
                     <View style={styles.statsGrid}>
                       <View style={styles.dealerStatCard}>
-                        <Text style={styles.statValue}>{asCurrency(dealerMonthSale)}</Text>
+                        <Text adjustsFontSizeToFit numberOfLines={1} style={styles.dealerStatValue}>
+                          {asCurrency(dealerMonthSale)}
+                        </Text>
                         <Text style={styles.statLabel}>{t('home_stats_month_sale')}</Text>
                       </View>
                       <View style={styles.dealerStatCard}>
-                        <Text style={styles.statValue}>{asCurrency(dealerPendingPayment)}</Text>
+                        <Text adjustsFontSizeToFit numberOfLines={1} style={styles.dealerStatValue}>
+                          {asCurrency(dealerPendingPayment)}
+                        </Text>
                         <Text style={styles.statLabel}>{t('home_stats_pending_payment')}</Text>
                       </View>
                     </View>
 
-                    <View style={styles.dealerSummaryCard}>
-                      <Text style={styles.dealerSummaryCount}>{filteredDealerBills.length}</Text>
-                      <Text style={styles.dealerSummaryLabel}>{t('tabs_dealer_bills')}</Text>
-                      <Text style={styles.dealerSummaryHint}>
-                        {filteredDealerBills.length === 0
-                          ? t('home_stats_dealer_empty')
-                          : `${selectedMonthLabel} ${selectedYear}`}
-                      </Text>
-                    </View>
                   </>
                 )}
               </View>
+
+              <Pressable
+                onPress={() => router.push('/dealer-statement')}
+                style={({ pressed }) => [styles.statementCard, pressed ? styles.statementCardPressed : null]}>
+                <View style={styles.statementIconWrap}>
+                  <Ionicons name="document-text-outline" size={24} color="#FFFFFF" />
+                </View>
+                <View style={styles.statementCopy}>
+                  <Text style={styles.statementTitle}>{t('home_statement_title')}</Text>
+                  <Text style={styles.statementSubtitle}>{t('home_statement_subtitle')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color="#0B4A34" />
+              </Pressable>
             </>
           ) : (
             <>
@@ -757,7 +789,7 @@ export default function HomeScreen() {
                 <Image source={require('../assets/images/image.png')} style={styles.logo} resizeMode="contain" />
                 <Text style={styles.title}>{t('home_welcome_title')}</Text>
                 <Text style={styles.subtitle}>{t('home_welcome_message', { name: firstName })}</Text>
-                <Text style={styles.roleText}>{getRoleLabel(user?.roleId)}</Text>
+                <Text style={styles.roleText}>{roleLabel}</Text>
               </View>
 
               <View style={styles.statsSection}>
@@ -809,7 +841,7 @@ export default function HomeScreen() {
       <Modal transparent visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setMonthPickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>Month</Text>
+            <Text style={styles.pickerTitle}>{t('attendance_filter_month')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {monthOptions.map((item) => (
                 <Pressable
@@ -830,7 +862,7 @@ export default function HomeScreen() {
       <Modal transparent visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setYearPickerVisible(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
-            <Text style={styles.pickerTitle}>Year</Text>
+            <Text style={styles.pickerTitle}>{t('attendance_filter_year')}</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {yearOptions.map((item) => (
                 <Pressable
@@ -860,7 +892,7 @@ export default function HomeScreen() {
 
             <View style={styles.detailGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>IN</Text>
+                <Text style={styles.detailLabel}>{t('attendance_in_button')}</Text>
                 <Text style={styles.detailValue}>
                   {selectedAttendanceEntry
                     ? formatAttendanceTime(
@@ -872,7 +904,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>OUT</Text>
+                <Text style={styles.detailLabel}>{t('attendance_out_button')}</Text>
                 <Text style={styles.detailValue}>
                   {selectedAttendanceEntry
                     ? formatAttendanceTime(
@@ -887,7 +919,7 @@ export default function HomeScreen() {
 
             <View style={styles.detailGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>BREAK ON</Text>
+                <Text style={styles.detailLabel}>{t('attendance_break_in_button')}</Text>
                 <Text style={styles.detailValue}>
                   {selectedAttendanceEntry
                     ? formatAttendanceTime(
@@ -899,7 +931,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>BREAK OFF</Text>
+                <Text style={styles.detailLabel}>{t('attendance_break_out_button')}</Text>
                 <Text style={styles.detailValue}>
                   {selectedAttendanceEntry
                     ? formatAttendanceTime(
@@ -913,7 +945,7 @@ export default function HomeScreen() {
             </View>
 
             <Pressable onPress={() => setSelectedAttendanceEntry(null)} style={styles.detailCloseButton}>
-              <Text style={styles.detailCloseText}>Close</Text>
+              <Text style={styles.detailCloseText}>{t('common_close')}</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -1497,7 +1529,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dealerStatCard: {
-    width: '100%',
+    width: '48%',
     minHeight: 118,
     borderRadius: 18,
     backgroundColor: '#F4FAF7',
@@ -1505,6 +1537,11 @@ const styles = StyleSheet.create({
     borderColor: '#DCE9E2',
     padding: 18,
     justifyContent: 'space-between',
+  },
+  dealerStatValue: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0B5B35',
   },
   statValue: {
     fontSize: 34,
@@ -1537,6 +1574,43 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     color: '#A9E2C6',
+  },
+  statementCard: {
+    minHeight: 78,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D8E9DF',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statementCardPressed: {
+    opacity: 0.9,
+  },
+  statementIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#0B4A34',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statementCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statementTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#123D33',
+  },
+  statementSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#60786F',
   },
   pickerBackdrop: {
     flex: 1,

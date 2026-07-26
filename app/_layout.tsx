@@ -41,6 +41,7 @@ export default function RootLayout() {
         <Stack.Screen name="register" />
         <Stack.Screen name="forgot-password" />
         <Stack.Screen name="reset-password" />
+        <Stack.Screen name="dealer-statement" />
         <Stack.Screen name="(tabs)" />
       </Stack>
       <StatusBar style="dark" />

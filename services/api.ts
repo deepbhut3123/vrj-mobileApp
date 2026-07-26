@@ -213,6 +213,27 @@ export type DealerBill = {
   updatedAt?: string;
 };
 
+export type DealerPayment = {
+  _id: string;
+  paymentDate: string;
+  amount: number;
+  paymentType: "cash" | "online" | "bank";
+  dealerId?: {
+    _id?: string;
+    dealerName?: string;
+    contactNo?: string;
+    city?: string;
+  };
+  userId?: {
+    _id?: string;
+    name?: string;
+    email?: string;
+    roleId?: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AttendanceAction = "in" | "out" | "break-in" | "break-out";
 
 export type AttendanceEntry = {
@@ -800,7 +821,16 @@ const extractAllowedUser = (payload: unknown): AuthUser | null => {
       ? (userData as { _id?: unknown })._id
       : undefined;
 
-  const nameRaw = "name" in userData ? (userData as { name?: unknown }).name : undefined;
+  const nameRaw =
+    "name" in userData
+      ? (userData as { name?: unknown }).name
+      : "fullName" in userData
+      ? (userData as { fullName?: unknown }).fullName
+      : "dealerName" in userData
+      ? (userData as { dealerName?: unknown }).dealerName
+      : "displayName" in userData
+      ? (userData as { displayName?: unknown }).displayName
+      : undefined;
   const emailRaw = "email" in userData ? (userData as { email?: unknown }).email : undefined;
   const mobileNumberRaw =
     "mobileNumber" in userData ? (userData as { mobileNumber?: unknown }).mobileNumber : undefined;
@@ -850,7 +880,7 @@ const extractAllowedUser = (payload: unknown): AuthUser | null => {
 
   return {
     id: String(idRaw ?? ""),
-    name: String(nameRaw ?? ""),
+    name: String(nameRaw ?? "").trim(),
     email: String(emailRaw ?? ""),
     mobileNumber: String(mobileNumberRaw ?? ""),
     roleId,
@@ -1275,12 +1305,37 @@ export const markRetailerBillsAsCompleted = async (billIds: string[]) => {
   }
 };
 
-export const getAllDealerBills = async () => {
+export const getAllDealerBills = async (filters?: {
+  fromDate?: string;
+  toDate?: string;
+}) => {
   try {
-    const response = await API.get("/api/admin/dealer/bills");
+    const response = await API.get("/api/admin/dealer/bills", {
+      params: {
+        fromDate: filters?.fromDate,
+        toDate: filters?.toDate,
+      },
+    });
     return asApiResult<{ data: DealerBill[] }>(response.status, response.data);
   } catch (error) {
     return asApiError(error, "Unable to fetch dealer bills.");
+  }
+};
+
+export const getAllDealerPayments = async (filters?: {
+  fromDate?: string;
+  toDate?: string;
+}) => {
+  try {
+    const response = await API.get("/api/admin/dealer/payments", {
+      params: {
+        fromDate: filters?.fromDate,
+        toDate: filters?.toDate,
+      },
+    });
+    return asApiResult<{ data: DealerPayment[] }>(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to fetch dealer payments.");
   }
 };
 

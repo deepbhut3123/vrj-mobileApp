@@ -4,7 +4,7 @@
     "slug": "veerrajFood",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/image.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "veerrajfood",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -17,7 +17,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/images/image.png"
+        "foregroundImage": "./assets/images/app-icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -25,7 +25,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/image.png"
+      "favicon": "./assets/images/app-icon.png"
     },
     "plugins": [
       "expo-router",
@@ -45,7 +45,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/image.png",
-          "imageWidth": 200,
+          "imageWidth": 140,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {

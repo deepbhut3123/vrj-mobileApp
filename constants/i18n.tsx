@@ -16,6 +16,7 @@ type TranslationKey =
   | "tabs_bill"
   | "tabs_retailer_bills"
   | "tabs_dealer_bills"
+  | "tabs_dealer_payments"
   | "tabs_attendance"
   | "tabs_route"
   | "tabs_settings"
@@ -51,6 +52,27 @@ type TranslationKey =
   | "dealer_bills_detail_qty"
   | "dealer_bills_detail_mrp"
   | "dealer_bills_detail_amount"
+  | "dealer_statement_title"
+  | "dealer_statement_bill_total"
+  | "dealer_statement_payment_received"
+  | "dealer_statement_payment"
+  | "dealer_statement_bill_details"
+  | "dealer_statement_bill"
+  | "dealer_statement_date_summary"
+  | "dealer_statement_date"
+  | "dealer_statement_product"
+  | "dealer_statement_qty"
+  | "dealer_statement_rate"
+  | "dealer_statement_total"
+  | "dealer_statement_month"
+  | "dealer_statement_year"
+  | "dealer_statement_download_pdf"
+  | "dealer_statement_preview"
+  | "dealer_statement_pdf_title"
+  | "dealer_statement_pdf_dialog"
+  | "dealer_statement_pdf_error"
+  | "dealer_payments_month_payment"
+  | "dealer_payments_empty_month"
   | "attendance_title"
   | "attendance_subtitle"
   | "attendance_today_in"
@@ -172,6 +194,34 @@ type TranslationKey =
   | "home_stats_month_sale"
   | "home_stats_pending_payment"
   | "home_stats_dealer_empty"
+  | "home_admin_overview"
+  | "home_admin_revenue_snapshot"
+  | "home_admin_subtitle"
+  | "home_admin_total_revenue"
+  | "home_admin_revenue_hint"
+  | "home_admin_retailer_bills"
+  | "home_admin_dealer_bills"
+  | "home_admin_retailers"
+  | "home_admin_dealers"
+  | "home_admin_quick_summary"
+  | "home_admin_quick_summary_text"
+  | "home_staff_dashboard"
+  | "home_dealer_dashboard"
+  | "home_hello_name"
+  | "home_staff_salary"
+  | "home_staff_total_hours"
+  | "home_staff_hourly_rate"
+  | "home_staff_total_time"
+  | "home_staff_empty_month"
+  | "home_statement_title"
+  | "home_statement_subtitle"
+  | "home_role_admin"
+  | "home_role_retailer"
+  | "home_role_dealer"
+  | "home_role_salesman"
+  | "home_role_staff"
+  | "home_role_delivery"
+  | "home_role_user"
   | "profile_title"
   | "profile_subtitle"
   | "profile_role"
@@ -252,6 +302,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_bill: "Bills",
     tabs_retailer_bills: "Retailer Bills",
     tabs_dealer_bills: "Dealer Bills",
+    tabs_dealer_payments: "Payment",
     tabs_attendance: "Attendance",
     tabs_route: "Route",
     tabs_settings: "Settings",
@@ -287,6 +338,27 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     dealer_bills_detail_qty: "Qty",
     dealer_bills_detail_mrp: "MRP",
     dealer_bills_detail_amount: "Amount",
+    dealer_statement_title: "Dealer Statement",
+    dealer_statement_bill_total: "Bill Total",
+    dealer_statement_payment_received: "Payment Received",
+    dealer_statement_payment: "Payment",
+    dealer_statement_bill_details: "Bill Details",
+    dealer_statement_bill: "Bill",
+    dealer_statement_date_summary: "Date Summary",
+    dealer_statement_date: "Date",
+    dealer_statement_product: "Product",
+    dealer_statement_qty: "Qty",
+    dealer_statement_rate: "Rate",
+    dealer_statement_total: "Total",
+    dealer_statement_month: "Month",
+    dealer_statement_year: "Year",
+    dealer_statement_download_pdf: "Download PDF",
+    dealer_statement_preview: "Statement Preview",
+    dealer_statement_pdf_title: "Statement PDF",
+    dealer_statement_pdf_dialog: "Download statement PDF",
+    dealer_statement_pdf_error: "Unable to create statement PDF.",
+    dealer_payments_month_payment: "Month Payment",
+    dealer_payments_empty_month: "No payments for selected month.",
     attendance_title: "Attendance",
     attendance_subtitle: "Mark your check-in and check-out, then review your day-wise attendance below.",
     attendance_today_in: "Today In",
@@ -411,6 +483,34 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_stats_month_sale: "Current Month Sale",
     home_stats_pending_payment: "Pending Payment",
     home_stats_dealer_empty: "No dealer bills for the selected month.",
+    home_admin_overview: "Admin Overview",
+    home_admin_revenue_snapshot: "Revenue Snapshot",
+    home_admin_subtitle: "A compact home tab with your top number first.",
+    home_admin_total_revenue: "Total Revenue",
+    home_admin_revenue_hint: "Current year retailer + dealer bills",
+    home_admin_retailer_bills: "Retailer Bills",
+    home_admin_dealer_bills: "Dealer Bills",
+    home_admin_retailers: "Retailers",
+    home_admin_dealers: "Dealers",
+    home_admin_quick_summary: "Quick Summary",
+    home_admin_quick_summary_text: "{{bills}} total bills across {{accounts}} active business accounts.",
+    home_staff_dashboard: "Staff Dashboard",
+    home_dealer_dashboard: "Dealer Dashboard",
+    home_hello_name: "Hello, {{name}}",
+    home_staff_salary: "Salary",
+    home_staff_total_hours: "Total Hours",
+    home_staff_hourly_rate: "Hourly Rate",
+    home_staff_total_time: "Total Time",
+    home_staff_empty_month: "No attendance for selected month.",
+    home_statement_title: "Statement",
+    home_statement_subtitle: "Select month and year, then download PDF",
+    home_role_admin: "Admin",
+    home_role_retailer: "Retailer",
+    home_role_dealer: "Dealer",
+    home_role_salesman: "Salesman",
+    home_role_staff: "Staff",
+    home_role_delivery: "Delivery Man",
+    home_role_user: "User",
     profile_title: "Profile",
     profile_subtitle: "Manage your account",
     profile_role: "Role",
@@ -495,6 +595,7 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     tabs_bill: "બિલ",
     tabs_retailer_bills: "રિટેલર બિલ",
     tabs_dealer_bills: "ડીલર બિલ",
+    tabs_dealer_payments: "ચુકવણી",
     tabs_attendance: "હાજરી",
     tabs_route: "રૂટ",
     tabs_settings: "સેટિંગ્સ",
@@ -530,6 +631,27 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     dealer_bills_detail_qty: "જથ્થો",
     dealer_bills_detail_mrp: "એમઆરપી",
     dealer_bills_detail_amount: "રકમ",
+    dealer_statement_title: "ડીલર સ્ટેટમેન્ટ",
+    dealer_statement_bill_total: "બિલ કુલ",
+    dealer_statement_payment_received: "ચુકવણી પ્રાપ્ત",
+    dealer_statement_payment: "ચુકવણી",
+    dealer_statement_bill_details: "બિલ વિગતો",
+    dealer_statement_bill: "બિલ",
+    dealer_statement_date_summary: "તારીખ સારાંશ",
+    dealer_statement_date: "તારીખ",
+    dealer_statement_product: "પ્રોડક્ટ",
+    dealer_statement_qty: "જથ્થો",
+    dealer_statement_rate: "દર",
+    dealer_statement_total: "કુલ",
+    dealer_statement_month: "મહિનો",
+    dealer_statement_year: "વર્ષ",
+    dealer_statement_download_pdf: "PDF ડાઉનલોડ કરો",
+    dealer_statement_preview: "સ્ટેટમેન્ટ પૂર્વાવલોકન",
+    dealer_statement_pdf_title: "સ્ટેટમેન્ટ PDF",
+    dealer_statement_pdf_dialog: "સ્ટેટમેન્ટ PDF ડાઉનલોડ કરો",
+    dealer_statement_pdf_error: "સ્ટેટમેન્ટ PDF બનાવી શકાયું નથી.",
+    dealer_payments_month_payment: "મહિનાની ચુકવણી",
+    dealer_payments_empty_month: "પસંદ કરેલા મહિને કોઈ ચુકવણી નથી.",
     attendance_title: "હાજરી",
     attendance_subtitle: "ચેક-ઇન અને ચેક-આઉટ માર્ક કરો, પછી નીચે તમારી દૈનિક હાજરી જુઓ.",
     attendance_today_in: "આજનું ઇન",
@@ -654,6 +776,34 @@ const translations: Record<AppLanguage, Record<TranslationKey, string>> = {
     home_stats_month_sale: "હાલના મહિનાનું વેચાણ",
     home_stats_pending_payment: "બાકી ચુકવણી",
     home_stats_dealer_empty: "પસંદ કરેલા મહિને કોઈ ડીલર બિલ નથી.",
+    home_admin_overview: "એડમિન અવલોકન",
+    home_admin_revenue_snapshot: "આવક સારાંશ",
+    home_admin_subtitle: "મુખ્ય આંકડો પહેલા દેખાય એવો સંક્ષિપ્ત હોમ ટેબ.",
+    home_admin_total_revenue: "કુલ આવક",
+    home_admin_revenue_hint: "હાલના વર્ષના રિટેલર + ડીલર બિલ",
+    home_admin_retailer_bills: "રિટેલર બિલ",
+    home_admin_dealer_bills: "ડીલર બિલ",
+    home_admin_retailers: "રિટેલર્સ",
+    home_admin_dealers: "ડીલર્સ",
+    home_admin_quick_summary: "ઝડપી સારાંશ",
+    home_admin_quick_summary_text: "{{accounts}} સક્રિય બિઝનેસ એકાઉન્ટમાં કુલ {{bills}} બિલ.",
+    home_staff_dashboard: "સ્ટાફ ડેશબોર્ડ",
+    home_dealer_dashboard: "ડીલર ડેશબોર્ડ",
+    home_hello_name: "નમસ્તે, {{name}}",
+    home_staff_salary: "પગાર",
+    home_staff_total_hours: "કુલ કલાક",
+    home_staff_hourly_rate: "કલાકનો દર",
+    home_staff_total_time: "કુલ સમય",
+    home_staff_empty_month: "પસંદ કરેલા મહિને હાજરી નથી.",
+    home_statement_title: "સ્ટેટમેન્ટ",
+    home_statement_subtitle: "મહિનો અને વર્ષ પસંદ કરો, પછી PDF ડાઉનલોડ કરો",
+    home_role_admin: "એડમિન",
+    home_role_retailer: "રિટેલર",
+    home_role_dealer: "ડીલર",
+    home_role_salesman: "સેલ્સમેન",
+    home_role_staff: "સ્ટાફ",
+    home_role_delivery: "ડિલિવરી મેન",
+    home_role_user: "યુઝર",
     profile_title: "પ્રોફાઇલ",
     profile_subtitle: "તમારું એકાઉન્ટ મેનેજ કરો",
     profile_role: "ભૂમિકા",
