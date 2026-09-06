@@ -1023,6 +1023,15 @@ export const logoutCurrentUser = async () => {
   }
 };
 
+export const requestAccountDeletion = async () => {
+  try {
+    const response = await API.post("/api/auth/account-deletion-request");
+    return asApiResult(response.status, response.data);
+  } catch (error) {
+    return asApiError(error, "Unable to send account deletion request.");
+  }
+};
+
 export const register = async (
   name: string,
   email: string,

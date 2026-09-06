@@ -97,16 +97,22 @@ const getDealerBillDate = (bill: DealerBill) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const isCurrentYearBill = (bill: AppBill) => {
+const getAppBillDate = (bill: AppBill) => {
   const referenceDate =
     (typeof bill.createdAt === 'string' && bill.createdAt) ||
     (typeof (bill as { billDate?: unknown }).billDate === 'string' ? String((bill as { billDate?: unknown }).billDate) : '');
-  if (!referenceDate) return false;
+  if (!referenceDate) return null;
 
   const parsed = new Date(referenceDate);
-  if (Number.isNaN(parsed.getTime())) return false;
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
-  return parsed.getFullYear() === new Date().getFullYear();
+const isDateInMonth = (date: Date | null, month: number, year: number) => {
+  if (!date) {
+    return false;
+  }
+
+  return date.getMonth() === month && date.getFullYear() === year;
 };
 
 const asCurrency = (value: number) =>
@@ -284,6 +290,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceEntry[]>([]);
   const [dealerBills, setDealerBills] = useState<DealerBill[]>([]);
+  const [adminRetailerBills, setAdminRetailerBills] = useState<AppBill[]>([]);
+  const [adminDealerBills, setAdminDealerBills] = useState<AppBill[]>([]);
   const [dealerPendingPaymentAmount, setDealerPendingPaymentAmount] = useState(0);
   const [selectedAttendanceEntry, setSelectedAttendanceEntry] = useState<AttendanceEntry | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
@@ -348,11 +356,12 @@ export default function HomeScreen() {
       const allDealers = extractList<AppDealer>(dealersResult.data);
       const retailerBills = extractList<AppBill>(retailerBillsResult.data);
       const dealerBills = extractList<AppBill>(dealerBillsResult.data);
-      const currentYearRetailerBills = retailerBills.filter(isCurrentYearBill);
-      const currentYearDealerBills = dealerBills.filter(isCurrentYearBill);
       const totalRevenue =
-        currentYearRetailerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0) +
-        currentYearDealerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0);
+        retailerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0) +
+        dealerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0);
+
+      setAdminRetailerBills(retailerBills);
+      setAdminDealerBills(dealerBills);
 
       setStats({
         shops: 0,
@@ -487,6 +496,22 @@ export default function HomeScreen() {
     () => monthOptions.find((item) => item.value === selectedMonth)?.label ?? '',
     [monthOptions, selectedMonth],
   );
+  const adminMonthStats = useMemo(() => {
+    const filteredRetailerBills = adminRetailerBills.filter((bill) =>
+      isDateInMonth(getAppBillDate(bill), selectedMonth, selectedYear),
+    );
+    const filteredDealerBills = adminDealerBills.filter((bill) =>
+      isDateInMonth(getAppBillDate(bill), selectedMonth, selectedYear),
+    );
+
+    return {
+      retailerBills: filteredRetailerBills.length,
+      dealerBills: filteredDealerBills.length,
+      totalRevenue:
+        filteredRetailerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0) +
+        filteredDealerBills.reduce((sum, bill) => sum + getBillTotal(bill), 0),
+    };
+  }, [adminDealerBills, adminRetailerBills, selectedMonth, selectedYear]);
   const filteredDealerBills = useMemo(
     () =>
       dealerBills.filter((bill) => {
@@ -575,11 +600,28 @@ export default function HomeScreen() {
       <View style={styles.bgOrbBottom} />
 
       {isAdmin ? (
-        <View style={styles.adminDashboard}>
+        <ScrollView
+          key={`home-${homeVariant}`}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.adminDashboard}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void loadStats('refresh')} tintColor="#0F5D33" />
+          }>
           <View style={styles.adminHero}>
             <Text style={styles.adminEyebrow}>{t('home_admin_overview')}</Text>
             <Text style={styles.adminTitle}>{t('home_admin_revenue_snapshot')}</Text>
             <Text style={styles.adminSubtitle}>{t('home_admin_subtitle')}</Text>
+
+            <View style={styles.adminFilterRow}>
+              <Pressable onPress={() => setMonthPickerVisible(true)} style={styles.adminFilterSelect}>
+                <Text style={styles.adminFilterLabel}>{t('attendance_filter_month')}</Text>
+                <Text style={styles.adminFilterValue}>{selectedMonthLabel}</Text>
+              </Pressable>
+              <Pressable onPress={() => setYearPickerVisible(true)} style={styles.adminFilterSelect}>
+                <Text style={styles.adminFilterLabel}>{t('attendance_filter_year')}</Text>
+                <Text style={styles.adminFilterValue}>{selectedYear}</Text>
+              </Pressable>
+            </View>
           </View>
 
           {loadingStats ? (
@@ -593,7 +635,7 @@ export default function HomeScreen() {
                   <View style={styles.revenueRingMiddle}>
                     <View style={styles.revenueRingInner}>
                       <Text style={styles.revenueRingLabel}>{t('home_admin_total_revenue')}</Text>
-                      <Text style={styles.revenueRingValue}>{asCurrency(stats.totalRevenue)}</Text>
+                      <Text style={styles.revenueRingValue}>{asCurrency(adminMonthStats.totalRevenue)}</Text>
                       <Text style={styles.revenueRingHint}>{t('home_admin_revenue_hint')}</Text>
                     </View>
                   </View>
@@ -602,11 +644,11 @@ export default function HomeScreen() {
 
               <View style={styles.adminCompactGrid}>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardSoft]}>
-                  <Text style={styles.adminMiniValue}>{stats.bills}</Text>
+                  <Text style={styles.adminMiniValue}>{adminMonthStats.retailerBills}</Text>
                   <Text style={styles.adminMiniLabel}>{t('home_admin_retailer_bills')}</Text>
                 </View>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardWarm]}>
-                  <Text style={styles.adminMiniValue}>{stats.dealerBills}</Text>
+                  <Text style={styles.adminMiniValue}>{adminMonthStats.dealerBills}</Text>
                   <Text style={styles.adminMiniLabel}>{t('home_admin_dealer_bills')}</Text>
                 </View>
                 <View style={[styles.adminMiniCard, styles.adminMiniCardStrong]}>
@@ -623,14 +665,14 @@ export default function HomeScreen() {
                 <Text style={styles.adminFooterTitle}>{t('home_admin_quick_summary')}</Text>
                 <Text style={styles.adminFooterText}>
                   {t('home_admin_quick_summary_text', {
-                    bills: stats.bills + stats.dealerBills,
+                    bills: adminMonthStats.retailerBills + adminMonthStats.dealerBills,
                     accounts: stats.retailerCount + stats.dealerCount,
                   })}
                 </Text>
               </View>
             </>
           )}
-        </View>
+        </ScrollView>
       ) : (
         <ScrollView
           key={`home-${homeVariant}`}
@@ -1157,7 +1199,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   adminDashboard: {
-    flex: 1,
+    flexGrow: 1,
     paddingTop: 12,
     paddingBottom: 18,
     justifyContent: 'space-between',
@@ -1184,6 +1226,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#5E7169',
+  },
+  adminFilterRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  adminFilterSelect: {
+    flex: 1,
+    minHeight: 62,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#A8CDB9',
+    justifyContent: 'center',
+    shadowColor: '#123524',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  adminFilterLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2F7B59',
+    textTransform: 'uppercase',
+  },
+  adminFilterValue: {
+    marginTop: 4,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#123524',
   },
   revenueRingCard: {
     alignItems: 'center',

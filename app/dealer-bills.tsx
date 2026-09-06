@@ -37,6 +37,10 @@ const asCurrency = (value: number) =>
   `Rs. ${new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 0,
   }).format(Math.round(value))}`;
+const asPlainAmount = (value: number) =>
+  new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0,
+  }).format(Math.round(Number(value) || 0));
 const todayValue = () => new Date().toISOString().slice(0, 10);
 const dateFromValue = (value: string) => {
   const parsed = new Date(`${value}T00:00:00`);
@@ -93,6 +97,7 @@ export default function DealerBillsScreen() {
   const params = useLocalSearchParams<{ create?: string }>();
   const handledCreateParamRef = useRef<string | null>(null);
   const user = getCurrentUser();
+  const isAdminUser = Number(user?.roleId ?? 0) === 1;
   const isDealerUser = Number(user?.roleId ?? 0) === 3;
   const isCreatePage = pathname === '/dealer-bills-add';
   const shouldHideAmounts = user?.roleId === 5;
@@ -176,6 +181,17 @@ export default function DealerBillsScreen() {
   const selectedDealer = useMemo(
     () => dealers.find((item) => item._id === selectedDealerId) ?? null,
     [dealers, selectedDealerId],
+  );
+  const getBillDealerName = useCallback(
+    (bill: DealerBill) => {
+      if (bill.dealerId?.dealerName) {
+        return bill.dealerId.dealerName;
+      }
+
+      const dealerId = typeof bill.dealerId?._id === 'string' ? bill.dealerId._id : '';
+      return dealers.find((item) => item._id === dealerId)?.dealerName || '-';
+    },
+    [dealers],
   );
   const monthOptions = useMemo(
     () =>
@@ -500,30 +516,36 @@ export default function DealerBillsScreen() {
                 ]}
                 onPress={() => setDetailBill(bill)}>
                 <View style={styles.billSingleRow}>
-                <Text style={[styles.billDate, isShippedBill ? styles.billTextShipped : null]}>
-                  {bill.billDate ? new Date(bill.billDate).toLocaleDateString() : '-'}
-                </Text>
-                {!shouldHideAmounts ? (
-                  <View style={styles.billTotalInline}>
-                    <Text style={[styles.billTotalLabel, isShippedBill ? styles.billSubTextShipped : null]}>{t('dealer_bills_total')}</Text>
-                    <Text style={[styles.billTotalValue, isShippedBill ? styles.billTextShipped : null]}>{asCurrency(bill.totalAmount)}</Text>
-                  </View>
-                ) : null}
-                {getDealerBillStatus(bill) === 'ordered' ? (
-                  <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      void openEditModal(bill);
-                    }}
-                    style={styles.editButton}>
-                    <Ionicons name="pencil" size={16} color="#0E6C50" />
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </Pressable>
-                ) : (
-                  <View style={styles.editButtonPlaceholder} />
-                )}
-              </View>
-            </Pressable>
+                  <Text style={[styles.billDate, isShippedBill ? styles.billTextShipped : null]}>
+                    {bill.billDate ? new Date(bill.billDate).toLocaleDateString() : '-'}
+                  </Text>
+                  {isAdminUser ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.billDealerName, isShippedBill ? styles.billTextShipped : null]}>
+                      {getBillDealerName(bill)}
+                    </Text>
+                  ) : null}
+                  {!shouldHideAmounts ? (
+                    <Text style={[styles.billTotalValue, isShippedBill ? styles.billTextShipped : null]}>
+                      {asPlainAmount(bill.totalAmount)}
+                    </Text>
+                  ) : null}
+                  {getDealerBillStatus(bill) === 'ordered' ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        void openEditModal(bill);
+                      }}
+                      style={styles.editButton}>
+                      <Ionicons name="pencil" size={16} color="#0E6C50" />
+                      <Text style={styles.editButtonText}>Edit</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.editButtonPlaceholder} />
+                  )}
+                </View>
+              </Pressable>
             );
           })
         )}
@@ -682,14 +704,13 @@ const styles = StyleSheet.create({
   kattaPill: { backgroundColor: '#E3F3EA', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   kattaPillShipped: { backgroundColor: 'rgba(255, 255, 255, 0.16)' },
   kattaPillText: { color: '#0E6C50', fontSize: 11, fontWeight: '800' },
-  billTotalInline: { flex: 1, minWidth: 0 },
-  billTotalLabel: { fontSize: 11, fontWeight: '700', color: '#60786F', textTransform: 'uppercase' },
   billInfoLabel: { fontSize: 11, fontWeight: '700', color: '#60786F', textTransform: 'uppercase' },
   billInfoValue: { marginTop: 4, color: '#123D33', fontSize: 15, fontWeight: '800' },
-  billTotalValue: { marginTop: 2, color: '#0E6C50', fontSize: 18, fontWeight: '800' },
+  billDealerName: { flex: 1, minWidth: 0, color: '#123D33', fontSize: 14, fontWeight: '800' },
+  billTotalValue: { minWidth: 58, color: '#0E6C50', fontSize: 14, fontWeight: '800', textAlign: 'right' },
   billTextShipped: { color: '#FFFFFF' },
   billSubTextShipped: { color: '#D8F0E5' },
-  billDate: { width: 84, color: '#123D33', fontSize: 16, fontWeight: '800' },
+  billDate: { width: 84, color: '#123D33', fontSize: 14, fontWeight: '800' },
   editButton: { minHeight: 34, borderRadius: 11, backgroundColor: '#E3F3EA', borderWidth: 1, borderColor: '#CDE4D6', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
   editButtonPlaceholder: { width: 70 },
   editButtonText: { color: '#0E6C50', fontSize: 12, fontWeight: '800' },

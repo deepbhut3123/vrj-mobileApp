@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "veerrajFood",
+    "name": "Veerraaj Foods",
     "slug": "veerrajFood",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,16 +15,24 @@
       }
     },
     "android": {
+      "package": "com.veerrajfoods.mobileapp",
+      "versionCode": 10,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/app-icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.veerrajFood"
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
+      "name": "Veerraaj Foods",
       "favicon": "./assets/images/app-icon.png"
     },
     "plugins": [

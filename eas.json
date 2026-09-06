@@ -4,13 +4,33 @@
   },
   "build": {
     "preview": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://veerrajfoods-mobile-app-backend.vercel.app",
+        "EXPO_PUBLIC_ATTENDANCE_TARGET_LATITUDE": "23.045984842191977",
+        "EXPO_PUBLIC_ATTENDANCE_TARGET_LONGITUDE": "72.6995945327319",
+        "EXPO_PUBLIC_ATTENDANCE_RADIUS_METERS": "50"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://veerrajfoods-mobile-app-backend.vercel.app",
+        "EXPO_PUBLIC_ATTENDANCE_TARGET_LATITUDE": "23.045984842191977",
+        "EXPO_PUBLIC_ATTENDANCE_TARGET_LONGITUDE": "72.6995945327319",
+        "EXPO_PUBLIC_ATTENDANCE_RADIUS_METERS": "50"
+      },
       "android": {
         "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal"
       }
     }
   }

@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
-import { Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
 
 import { useI18n } from '@/constants/i18n';
-import { getCurrentUser, getRoleLabel, logoutCurrentUser } from '@/services/api';
+import { getCurrentUser, getRoleLabel, logoutCurrentUser, requestAccountDeletion } from '@/services/api';
 
 export default function SettingsScreen() {
   const { language, setLanguage, t } = useI18n();
+  const [deletionRequesting, setDeletionRequesting] = useState(false);
   const user = getCurrentUser();
   const roleLabel = getRoleLabel(user?.roleId);
   const initials = (user?.name ?? 'U')
@@ -18,6 +20,32 @@ export default function SettingsScreen() {
   const onLogout = async () => {
     await logoutCurrentUser();
     router.replace('/login');
+  };
+
+  const onRequestAccountDeletion = () => {
+    Alert.alert(
+      'Request account deletion',
+      'Your request will be sent to Veerraaj Foods admin for review. You can keep using the app until admin processes it.',
+      [
+        { text: t('common_cancel'), style: 'cancel' },
+        {
+          text: 'Send request',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletionRequesting(true);
+            const result = await requestAccountDeletion();
+            setDeletionRequesting(false);
+
+            if (!result.ok) {
+              Alert.alert(t('common_error'), result.message);
+              return;
+            }
+
+            Alert.alert('Request sent', result.message || 'Your account deletion request has been sent.');
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -73,6 +101,21 @@ export default function SettingsScreen() {
               <Text style={[styles.langBtnText, language === 'gu' && styles.langBtnTextActive]}>Gujarati</Text>
             </Pressable>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account deletion</Text>
+          <Text style={styles.hint}>
+            Send a request to delete your account and associated app data.
+          </Text>
+          <Pressable
+            disabled={deletionRequesting}
+            onPress={onRequestAccountDeletion}
+            style={[styles.deleteAccountBtn, deletionRequesting ? styles.disabledBtn : null]}>
+            <Text style={styles.deleteAccountBtnText}>
+              {deletionRequesting ? 'Sending request...' : 'Request account deletion'}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.section}>
@@ -232,5 +275,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  deleteAccountBtn: {
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#B73939',
+  },
+  deleteAccountBtnText: {
+    color: '#B73939',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  disabledBtn: {
+    opacity: 0.6,
   },
 });
